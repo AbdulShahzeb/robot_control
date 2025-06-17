@@ -13,9 +13,6 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>time</depend>
-  <depend>numpy</depend>
-  <depend>roboticstoolbox</depend>
-  <depend>spatialmath</depend>
 
   <exec_depend>ros2launch</exec_depend>
 
