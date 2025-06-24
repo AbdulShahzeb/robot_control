@@ -13,22 +13,23 @@ class GCodeInterpreter(Node):
         super().__init__("gcode_interpreter")
 
         # Publishers
-        self.pose_publisher = self.create_publisher(Twist, "ur10e/pose", 10)
-        self.stepper_publisher = self.create_publisher(Float32, "/stepper/speed", 10)
+        self.pose_pub_ = self.create_publisher(Twist, "ur10e/point_pose", 10)
+        self.duration_pub_ = self.create_publisher(Float32, f'/ur10e/movement_duration', 10)
+        self.stepper_pub_ = self.create_publisher(Float32, "/stepper/speed", 10)
 
         # Subscriber for robot movement status
-        self.movement_subscriber = self.create_subscription(
+        self.movement_sub = self.create_subscription(
             Bool, "ur10e/is_moving", self.robot_moving_callback, 10
         )
 
         # Parameters
-        self.declare_parameter("gcode_file", "print.gcode")
-        self.declare_parameter("x_offset", 150.0)
-        self.declare_parameter("y_offset", -50.0)
-        self.declare_parameter("z_offset", 200.0)
+        self.declare_parameter("file", "default.gcode")
+        self.declare_parameter("x_offset", -1000.0)
+        self.declare_parameter("y_offset", -250.0)
+        self.declare_parameter("z_offset", 197.0)
 
         # Constants for stepper motor calculation
-        self.SHAFT_DIAMETER = 11.0
+        self.SHAFT_DIAMETER = 5.0
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
         self.STEPS_PER_MM = self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
@@ -43,6 +44,7 @@ class GCodeInterpreter(Node):
         self.Z_OFFSET = (
             self.get_parameter("z_offset").get_parameter_value().double_value
         )
+        self.ROBOT_MAX_SPEED = 100.0  # mm/s
 
         # State variables
         self.current_position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
@@ -50,6 +52,7 @@ class GCodeInterpreter(Node):
         self.current_extrusion = 0.0  # mm
         self.prev_is_moving = False
         self.is_executing = False
+        self.first_move_executed = False
 
         # G-code command queue and execution state
         self.gcode_commands = []
@@ -62,7 +65,7 @@ class GCodeInterpreter(Node):
 
     def load_gcode_file(self):
         """Load and parse the G-code file"""
-        gcode_file = self.get_parameter("gcode_file").get_parameter_value().string_value
+        gcode_file = self.get_parameter("file").get_parameter_value().string_value
 
         if not os.path.exists(gcode_file):
             self.get_logger().error(f"G-code file not found: {gcode_file}")
@@ -140,7 +143,7 @@ class GCodeInterpreter(Node):
         """Stop G-code execution"""
         speed_msg = Float32()
         speed_msg.data = 0.0
-        self.stepper_publisher.publish(speed_msg)
+        self.stepper_pub_.publish(speed_msg)
 
     def execute_next_command(self):
         """Execute the next G-code command in the queue"""
@@ -156,10 +159,13 @@ class GCodeInterpreter(Node):
         )
 
         # Process the command
-        self.process_command(command)
+        movement_issued = self.process_command(command)
 
         # Move to next command
         self.command_index += 1
+
+        if not movement_issued and self.is_executing:
+            self.execute_next_command()
 
     def process_command(self, command):
         """Process a single G-code command"""
@@ -186,47 +192,107 @@ class GCodeInterpreter(Node):
         if "E" in command and command["E"] is not None:
             self.current_extrusion = command["E"]
 
-        # Handle different G-code commands
-        if "G" in command and command["G"] in [0, 1]:
-            self.execute_movement(prev_position, prev_extrusion)
+        movement_issued = False
 
-    def execute_movement(self, prev_position, prev_extrusion):
-        """Execute a movement command (G0 or G1)"""
-        # Calculate movement distance
+        # Handle different G-code commands
+        if "G" in command and command.get("G") == 92:
+            # Handle logical reset
+            self.get_logger().info(
+                f"G92: Position state reset: E={self.current_extrusion}"
+            )
+        elif "G" in command and command.get("G") in [0, 1]:
+            movement_issued = self.execute_movement(prev_position, prev_extrusion, command.get("G"))
+
+        return movement_issued
+
+    def execute_movement(self, prev_position, prev_extrusion, g_code):
+        """Execute a movement command (G0 or G1) and calculate its duration."""
+        # Calculate deltas for both robot and extruder
         delta_x = self.current_position["X"] - prev_position["X"]
         delta_y = self.current_position["Y"] - prev_position["Y"]
         delta_z = self.current_position["Z"] - prev_position["Z"]
-        xyz_move_distance = math.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
-
-        # Calculate extrusion
         delta_e = self.current_extrusion - prev_extrusion
+        
+        xyz_move_distance = math.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
+        
+        is_xyz_move = xyz_move_distance > 0.001
+        is_e_move = abs(delta_e) > 0.001
 
-        # Calculate stepper speed
-        stepper_speed = 0.0
+        # Case 1: Extrusion Ony (e.g. G1 F2700 E-5)
+        if not is_xyz_move and is_e_move:
+            self.get_logger().info(f"Executing extrusion-only move of {delta_e:.2f} mm.")
+            
+            # Use the feedrate to determine the speed of the extruder motor
+            feedrate_mms = self.current_feedrate / 60.0
+            if feedrate_mms > 0:
+                # Calculate a duration just for this extrusion action
+                duration_for_extrusion = abs(delta_e) / feedrate_mms
+                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM
+            else:
+                self.get_logger().error("Cannot perform extrusion-only move with zero feedrate.")
+                stepper_speed = 0.0
 
-        if xyz_move_distance > 0 and delta_e > 0 and self.current_feedrate > 0:
-            # Calculate move time
-            move_time_minutes = xyz_move_distance / self.current_feedrate
-            move_time_seconds = move_time_minutes * 60
+            speed_msg = Float32()
+            speed_msg.data = float(stepper_speed)
+            self.stepper_pub_.publish(speed_msg)
 
-            # Calculate extrusion speed
-            extrusion_speed_mmps = delta_e / move_time_seconds
+            return False
 
-            # Convert to steps per second
-            stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM
+        # Case 2: Movement
+        elif is_xyz_move:
 
-        # Publish stepper speed
-        speed_msg = Float32()
-        speed_msg.data = float(stepper_speed)
-        self.stepper_publisher.publish(speed_msg)
+            duration_seconds = 0.0
 
-        # Publish robot pose (convert to robot coordinates)
-        pose_msg = Twist()
-        pose_msg.linear.x = self.current_position["X"] + self.X_OFFSET
-        pose_msg.linear.y = self.current_position["Y"] + self.Y_OFFSET
-        pose_msg.linear.z = self.current_position["Z"] + self.Z_OFFSET
+            if not self.first_move_executed:
+                duration_seconds = 5.0
+                self.get_logger().warn(f"Executing first movement, Duration={duration_seconds:.2f} s.")
+                self.first_move_executed = True
+            else:
+                effective_speed_mms = 0.0
+                if g_code == 0:
+                    effective_speed_mms = self.ROBOT_MAX_SPEED
+                elif g_code == 1:
+                    gcode_feedrate_mms = self.current_feedrate / 60.0
+                    if gcode_feedrate_mms > 0:
+                        effective_speed_mms = min(gcode_feedrate_mms, self.ROBOT_MAX_SPEED)
+                    else:
+                        effective_speed_mms = self.ROBOT_MAX_SPEED
 
-        self.pose_publisher.publish(pose_msg)
+                if effective_speed_mms > 0:
+                    duration_seconds = max(1.0, (xyz_move_distance / effective_speed_mms))
+
+            # Publish duration and pose for the robot arm
+            duration_msg = Float32()
+            duration_msg.data = float(duration_seconds)
+            self.duration_pub_.publish(duration_msg)
+
+            self.get_logger().info(f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s")
+
+            pose_msg = Twist()
+            pose_msg.linear.x = self.current_position["X"] + self.X_OFFSET
+            pose_msg.linear.y = self.current_position["Y"] + self.Y_OFFSET
+            pose_msg.linear.z = self.current_position["Z"] + self.Z_OFFSET
+            pose_msg.angular.x = 180.0
+            pose_msg.angular.y = 0.0
+            pose_msg.angular.z = 0.0
+            self.pose_pub_.publish(pose_msg)
+
+            # Calculate and publish stepper speed for the combined move
+            stepper_speed = 0.0
+            if duration_seconds > 0 and delta_e > 0:
+                extrusion_speed_mmps = delta_e / duration_seconds
+                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM
+
+            speed_msg = Float32()
+            speed_msg.data = float(stepper_speed)
+            self.stepper_pub_.publish(speed_msg)
+
+            return True
+
+        # Case 3: G1/G0 command with no change in XYZ or E.
+        else:
+            self.get_logger().debug("G1/G0 command with no change in position or extrusion. Skipping.")
+            return False
 
 
 def main(args=None):

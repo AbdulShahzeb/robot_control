@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 import os
-import glob
+from glob import glob
 
 package_name = 'move_robot'
 
@@ -13,6 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
+        (os.path.join('share', package_name, 'gcode'), glob('gcode/*.gcode')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -24,6 +25,7 @@ setup(
         'console_scripts': [
             'move_ur = move_robot.move_ur:main',
             'calibrate_extruder = move_robot.calibrate_extruder:main',
+            'gcode_interpreter = move_robot.gcode_interpreter:main',
         ],
     },
 )
