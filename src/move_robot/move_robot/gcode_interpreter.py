@@ -23,13 +23,14 @@ class GCodeInterpreter(Node):
         )
 
         # Parameters
-        self.declare_parameter("file", "default.gcode")
-        self.declare_parameter("x_offset", -1000.0)
-        self.declare_parameter("y_offset", -250.0)
-        self.declare_parameter("z_offset", 197.0)
+        self.declare_parameter("file", "cube.gcode")
+        self.declare_parameter("x_offset", -900.0)
+        self.declare_parameter("y_offset", -360.0)
+        self.declare_parameter("z_offset", 195.5)
+        self.declare_parameter("wrist_angle", 90.0)
 
         # Constants for stepper motor calculation
-        self.SHAFT_DIAMETER = 5.0
+        self.SHAFT_DIAMETER = 11.0
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
         self.STEPS_PER_MM = self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
@@ -44,7 +45,12 @@ class GCodeInterpreter(Node):
         self.Z_OFFSET = (
             self.get_parameter("z_offset").get_parameter_value().double_value
         )
+        self.WRIST_ANGLE = (
+            self.get_parameter("wrist_angle").get_parameter_value().double_value
+        )
         self.ROBOT_MAX_SPEED = 100.0  # mm/s
+        self.get_logger().info(f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}")
+        self.get_logger().info(f"Wrist angle: {self.WRIST_ANGLE}")
 
         # State variables
         self.current_position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
@@ -233,7 +239,7 @@ class GCodeInterpreter(Node):
                 stepper_speed = 0.0
 
             speed_msg = Float32()
-            speed_msg.data = float(stepper_speed)
+            speed_msg.data = float(-1*stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return False
@@ -274,7 +280,7 @@ class GCodeInterpreter(Node):
             pose_msg.linear.z = self.current_position["Z"] + self.Z_OFFSET
             pose_msg.angular.x = 180.0
             pose_msg.angular.y = 0.0
-            pose_msg.angular.z = 0.0
+            pose_msg.angular.z = self.WRIST_ANGLE
             self.pose_pub_.publish(pose_msg)
 
             # Calculate and publish stepper speed for the combined move
@@ -284,7 +290,7 @@ class GCodeInterpreter(Node):
                 stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM
 
             speed_msg = Float32()
-            speed_msg.data = float(stepper_speed)
+            speed_msg.data = float(-1*stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return True

@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
 
     package_share_dir = get_package_share_directory('move_robot')
-    gcode_file = os.path.join(package_share_dir, 'gcode', 'default.gcode')
+    gcode_file = os.path.join(package_share_dir, 'gcode', 'cube.gcode')
 
     file_launch_arg = DeclareLaunchArgument(
         'file',
@@ -28,12 +28,13 @@ def generate_launch_description():
         executable='gcode_interpreter',
         name='gcode_interpreter',
         output='screen',
-        parameters=[{
-            'file': LaunchConfiguration('file'),
-            'x_offset': -1000.0,
-            'y_offset': -250.0,
-            'z_offset': 197.0
-        }]
+        parameters=[
+            {'x_offset': -900.0,
+            'y_offset': -360.0,
+            'z_offset': 194.75,
+            'wrist_angle': 90.0},
+            {'file': LaunchConfiguration('file')}
+        ]
     )
 
     delayed_gcode_node = TimerAction(

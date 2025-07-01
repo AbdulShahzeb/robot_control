@@ -27,7 +27,7 @@ class URcontrol(Node):
 
         self.is_moving = False
         self.target_q = None
-        self.JOINT_TOLERANCE = 0.05
+        self.JOINT_TOLERANCE = 0.005
         self.ur_type = "UR10e"
 
         # Make a robot based on self.ur_type
