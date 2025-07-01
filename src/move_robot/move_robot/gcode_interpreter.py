@@ -33,7 +33,10 @@ class GCodeInterpreter(Node):
         self.SHAFT_DIAMETER = 11.0
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
-        self.STEPS_PER_MM = self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
+        self.STEPS_PER_MM = 106.0 # calibrated value
+
+        # Uncomment the line below if you want to use the theoretical value
+        #self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
 
         # Offsets from robot base to print bed origin (in mm)
         self.X_OFFSET = (
