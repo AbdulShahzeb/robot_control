@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
 
     package_share_dir = get_package_share_directory('move_robot')
-    gcode_file = os.path.join(package_share_dir, 'gcode', 'cube.gcode')
+    gcode_file = os.path.join(package_share_dir, 'gcode', 'heart.gcode')
 
     file_launch_arg = DeclareLaunchArgument(
         'file',
@@ -23,15 +23,24 @@ def generate_launch_description():
         output='screen'
     )
 
+    keyboard_node = Node(
+        package='move_robot',
+        executable='keyboard_node',
+        name='keyboard_node',
+        output='screen',
+        emulate_tty=True,
+        prefix='xterm -e',
+    )
+
     gcode_interpreter_node = Node(
         package='move_robot',
         executable='gcode_interpreter',
         name='gcode_interpreter',
         output='screen',
         parameters=[
-            {'x_offset': -900.0,
-            'y_offset': -360.0,
-            'z_offset': 194.75,
+            {'x_offset': -905.0,
+            'y_offset': -260.0,
+            'z_offset': 195.4,
             'wrist_angle': 90.0},
             {'file': LaunchConfiguration('file')}
         ]
@@ -45,5 +54,6 @@ def generate_launch_description():
     return LaunchDescription([
         file_launch_arg,
         move_ur_node,
+        keyboard_node,
         delayed_gcode_node
     ])

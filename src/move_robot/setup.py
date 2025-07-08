@@ -26,6 +26,7 @@ setup(
             'move_ur = move_robot.move_ur:main',
             'calibrate_extruder = move_robot.calibrate_extruder:main',
             'gcode_interpreter = move_robot.gcode_interpreter:main',
+            'keyboard_node = move_robot.keyboard:main',
         ],
     },
 )

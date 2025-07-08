@@ -6,6 +6,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Float32, Bool
 import math
 import os
+from time import sleep
 
 
 class GCodeInterpreter(Node):
@@ -14,13 +15,23 @@ class GCodeInterpreter(Node):
 
         # Publishers
         self.pose_pub_ = self.create_publisher(Twist, "ur10e/point_pose", 10)
-        self.duration_pub_ = self.create_publisher(Float32, f'/ur10e/movement_duration', 10)
+        self.duration_pub_ = self.create_publisher(
+            Float32, f"/ur10e/movement_duration", 10
+        )
         self.stepper_pub_ = self.create_publisher(Float32, "/stepper/speed", 10)
 
-        # Subscriber for robot movement status
+        # Subscribers
         self.movement_sub = self.create_subscription(
             Bool, "ur10e/is_moving", self.robot_moving_callback, 10
         )
+        self.toggle_log_sub = self.create_subscription(
+            Bool, "/kb/toggle_log", self.toggle_log_callback, 10
+        )
+        self.toggle_log = True
+        self.shutdown_sub = self.create_subscription(
+            Bool, "/kb/shutdown", self.shutdown_callback, 10
+        )
+        self.shutdown_requested = False
 
         # Parameters
         self.declare_parameter("file", "cube.gcode")
@@ -33,10 +44,10 @@ class GCodeInterpreter(Node):
         self.SHAFT_DIAMETER = 11.0
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
-        self.STEPS_PER_MM = 106.0 # calibrated value
+        self.STEPS_PER_MM = 106.0  # calibrated value
 
         # Uncomment the line below if you want to use the theoretical value
-        #self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
+        # self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
 
         # Offsets from robot base to print bed origin (in mm)
         self.X_OFFSET = (
@@ -52,7 +63,9 @@ class GCodeInterpreter(Node):
             self.get_parameter("wrist_angle").get_parameter_value().double_value
         )
         self.ROBOT_MAX_SPEED = 100.0  # mm/s
-        self.get_logger().info(f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}")
+        self.get_logger().info(
+            f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}"
+        )
         self.get_logger().info(f"Wrist angle: {self.WRIST_ANGLE}")
 
         # State variables
@@ -122,12 +135,12 @@ class GCodeInterpreter(Node):
         curr_is_moving = msg.data
 
         # Detect transition from moving to stopped
-        if self.prev_is_moving and not curr_is_moving:
-            self.get_logger().info(
-                "Robot has stopped moving. Proceeding with next action."
-            )
-            if self.is_executing:
-                self.execute_next_command()
+        if self.prev_is_moving and not curr_is_moving and self.is_executing:
+            if self.toggle_log:
+                self.get_logger().info(
+                    "Robot has stopped moving. Executing next command."
+                )
+            self.execute_next_command()
 
         self.prev_is_moving = curr_is_moving
 
@@ -153,6 +166,8 @@ class GCodeInterpreter(Node):
         speed_msg = Float32()
         speed_msg.data = 0.0
         self.stepper_pub_.publish(speed_msg)
+        sleep(0.25)
+        self.shutdown_requested = True
 
     def execute_next_command(self):
         """Execute the next G-code command in the queue"""
@@ -160,12 +175,23 @@ class GCodeInterpreter(Node):
             if self.command_index >= len(self.gcode_commands):
                 self.get_logger().info("G-code execution completed!")
                 self.is_executing = False
+                self.stop_execution()
             return
 
         command = self.gcode_commands[self.command_index]
-        self.get_logger().info(
-            f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}: {command}"
+        percentage = (
+            (self.command_index + 1) / len(self.gcode_commands)
+            if len(self.gcode_commands) > 0
+            else 0
         )
+        if self.toggle_log:
+            self.get_logger().info(
+                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}: {command}. Progress: {percentage:.0%}"
+            )
+        else:
+            self.get_logger().info(
+                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}. Progress: {percentage:.0%}"
+            )
 
         # Process the command
         movement_issued = self.process_command(command)
@@ -210,7 +236,9 @@ class GCodeInterpreter(Node):
                 f"G92: Position state reset: E={self.current_extrusion}"
             )
         elif "G" in command and command.get("G") in [0, 1]:
-            movement_issued = self.execute_movement(prev_position, prev_extrusion, command.get("G"))
+            movement_issued = self.execute_movement(
+                prev_position, prev_extrusion, command.get("G")
+            )
 
         return movement_issued
 
@@ -221,16 +249,18 @@ class GCodeInterpreter(Node):
         delta_y = self.current_position["Y"] - prev_position["Y"]
         delta_z = self.current_position["Z"] - prev_position["Z"]
         delta_e = self.current_extrusion - prev_extrusion
-        
+
         xyz_move_distance = math.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
-        
+
         is_xyz_move = xyz_move_distance > 0.001
         is_e_move = abs(delta_e) > 0.001
 
         # Case 1: Extrusion Ony (e.g. G1 F2700 E-5)
         if not is_xyz_move and is_e_move:
-            self.get_logger().info(f"Executing extrusion-only move of {delta_e:.2f} mm.")
-            
+            self.get_logger().info(
+                f"Executing extrusion-only move of {delta_e:.2f} mm."
+            )
+
             # Use the feedrate to determine the speed of the extruder motor
             feedrate_mms = self.current_feedrate / 60.0
             if feedrate_mms > 0:
@@ -238,11 +268,13 @@ class GCodeInterpreter(Node):
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
                 stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM
             else:
-                self.get_logger().error("Cannot perform extrusion-only move with zero feedrate.")
+                self.get_logger().error(
+                    "Cannot perform extrusion-only move with zero feedrate."
+                )
                 stepper_speed = 0.0
 
             speed_msg = Float32()
-            speed_msg.data = float(-1*stepper_speed)
+            speed_msg.data = float(-1 * stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return False
@@ -254,7 +286,9 @@ class GCodeInterpreter(Node):
 
             if not self.first_move_executed:
                 duration_seconds = 5.0
-                self.get_logger().warn(f"Executing first movement, Duration={duration_seconds:.2f} s.")
+                self.get_logger().warn(
+                    f"Executing first movement, Duration={duration_seconds:.2f} s."
+                )
                 self.first_move_executed = True
             else:
                 effective_speed_mms = 0.0
@@ -263,19 +297,26 @@ class GCodeInterpreter(Node):
                 elif g_code == 1:
                     gcode_feedrate_mms = self.current_feedrate / 60.0
                     if gcode_feedrate_mms > 0:
-                        effective_speed_mms = min(gcode_feedrate_mms, self.ROBOT_MAX_SPEED)
+                        effective_speed_mms = min(
+                            gcode_feedrate_mms, self.ROBOT_MAX_SPEED
+                        )
                     else:
                         effective_speed_mms = self.ROBOT_MAX_SPEED
 
                 if effective_speed_mms > 0:
-                    duration_seconds = max(1.0, (xyz_move_distance / effective_speed_mms))
+                    duration_seconds = max(
+                        1.0, (xyz_move_distance / effective_speed_mms)
+                    )
 
             # Publish duration and pose for the robot arm
             duration_msg = Float32()
             duration_msg.data = float(duration_seconds)
             self.duration_pub_.publish(duration_msg)
 
-            self.get_logger().info(f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s")
+            if self.toggle_log:
+                self.get_logger().info(
+                    f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s"
+                )
 
             pose_msg = Twist()
             pose_msg.linear.x = self.current_position["X"] + self.X_OFFSET
@@ -293,28 +334,37 @@ class GCodeInterpreter(Node):
                 stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM
 
             speed_msg = Float32()
-            speed_msg.data = float(-1*stepper_speed)
+            speed_msg.data = float(-1 * stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return True
 
         # Case 3: G1/G0 command with no change in XYZ or E.
         else:
-            self.get_logger().debug("G1/G0 command with no change in position or extrusion. Skipping.")
+            self.get_logger().debug(
+                "G1/G0 command with no change in position or extrusion. Skipping."
+            )
             return False
+
+    def toggle_log_callback(self, msg):
+        self.toggle_log = not self.toggle_log
+
+    def shutdown_callback(self, msg):
+        self.get_logger().info("Received shutdown signal. Exiting...")
+        self.stop_execution()
 
 
 def main(args=None):
     rclpy.init(args=args)
+    node = GCodeInterpreter()
+    node.start_execution()
 
     try:
-        node = GCodeInterpreter()
-        node.start_execution()
-        rclpy.spin(node)
+        while rclpy.ok() and not node.shutdown_requested:
+            rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
     finally:
-        node.stop_execution()
         node.destroy_node()
         rclpy.shutdown()
 
