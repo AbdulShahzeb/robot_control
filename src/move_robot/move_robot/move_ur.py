@@ -62,6 +62,8 @@ class URcontrol(Node):
 
         self.toggle_log = True
         self.shutdown_requested = False
+        self.shutdown_delay = 4.0  # seconds
+        self.shutdown_timer = None
         self.log_timer = self.create_timer(0.005, self.send_log_data)
 
         # Set up publishers
@@ -84,8 +86,12 @@ class URcontrol(Node):
         self.toggle_log = not self.toggle_log
 
     def shutdown_callback(self, msg):
-        self.get_logger().info("Received shutdown signal. Exiting...")
+        self.get_logger().info(f"Received shutdown signal. Exiting in {self.shutdown_delay} seconds.")
+        self.shutdown_timer = self.create_timer(self.shutdown_delay, self.set_shutdown_flag)
+
+    def set_shutdown_flag(self):
         self.shutdown_requested = True
+        self.destroy_timer(self.shutdown_timer)
 
     def send_log_data(self):
         log_msg = String()

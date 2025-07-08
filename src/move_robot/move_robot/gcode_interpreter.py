@@ -166,6 +166,21 @@ class GCodeInterpreter(Node):
         speed_msg = Float32()
         speed_msg.data = 0.0
         self.stepper_pub_.publish(speed_msg)
+
+        # Publish duration and home pose
+        duration_msg = Float32()
+        duration_msg.data = float(4.0)
+        self.duration_pub_.publish(duration_msg)
+
+        pose_msg = Twist()
+        pose_msg.linear.x = self.X_OFFSET
+        pose_msg.linear.y = self.Y_OFFSET
+        pose_msg.linear.z = 400.0
+        pose_msg.angular.x = 180.0
+        pose_msg.angular.y = 0.0
+        pose_msg.angular.z = self.WRIST_ANGLE
+        self.pose_pub_.publish(pose_msg)
+
         sleep(0.25)
         self.shutdown_requested = True
 
