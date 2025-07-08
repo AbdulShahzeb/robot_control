@@ -7,6 +7,12 @@ from std_msgs.msg import Float32, Bool
 import math
 import os
 from time import sleep
+from enum import Enum, auto
+
+
+class PositioningState(Enum):
+    ABSOLUTE = auto()
+    RELATIVE = auto()
 
 
 class GCodeInterpreter(Node):
@@ -69,6 +75,7 @@ class GCodeInterpreter(Node):
         self.get_logger().info(f"Wrist angle: {self.WRIST_ANGLE}")
 
         # State variables
+        self.positioning_state = PositioningState.ABSOLUTE
         self.current_position = {"X": 0.0, "Y": 0.0, "Z": 0.0}
         self.current_feedrate = 0.0  # mm/min
         self.current_extrusion = 0.0  # mm
@@ -230,17 +237,36 @@ class GCodeInterpreter(Node):
                 f"Updated feedrate to {self.current_feedrate} mm/min"
             )
 
-        # Update position
-        if "X" in command and command["X"] is not None:
-            self.current_position["X"] = command["X"]
-        if "Y" in command and command["Y"] is not None:
-            self.current_position["Y"] = command["Y"]
-        if "Z" in command and command["Z"] is not None:
-            self.current_position["Z"] = command["Z"]
+        # Handle positioning state changes
+        if "G" in command:
+            if command.get("G") == 90:
+                self.positioning_state = PositioningState.ABSOLUTE
+                self.get_logger().info("Switched to absolute positioning")
+                return False
+            elif command.get("G") == 91:
+                self.positioning_state = PositioningState.RELATIVE
+                self.get_logger().info("Switched to relative positioning")
+                return False
 
-        # Update extrusion if present
-        if "E" in command and command["E"] is not None:
-            self.current_extrusion = command["E"]
+        # Update position and extrusion
+        if self.positioning_state == PositioningState.ABSOLUTE:
+            if "X" in command and command["X"] is not None:
+                self.current_position["X"] = command["X"]
+            if "Y" in command and command["Y"] is not None:
+                self.current_position["Y"] = command["Y"]
+            if "Z" in command and command["Z"] is not None:
+                self.current_position["Z"] = command["Z"]
+            if "E" in command and command["E"] is not None:
+                self.current_extrusion = command["E"]
+        elif self.positioning_state == PositioningState.RELATIVE:
+            if "X" in command and command["X"] is not None:
+                self.current_position["X"] += command["X"]
+            if "Y" in command and command["Y"] is not None:
+                self.current_position["Y"] += command["Y"]
+            if "Z" in command and command["Z"] is not None:
+                self.current_position["Z"] += command["Z"]
+            if "E" in command and command["E"] is not None:
+                self.current_extrusion += command["E"]
 
         movement_issued = False
 
