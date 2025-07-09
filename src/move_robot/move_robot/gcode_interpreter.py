@@ -372,7 +372,7 @@ class GCodeInterpreter(Node):
             stepper_speed = 0.0
             if duration_seconds > 0 and delta_e > 0:
                 extrusion_speed_mmps = delta_e / duration_seconds
-                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM
+                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * 1.1
 
             speed_msg = Float32()
             speed_msg.data = float(-1 * stepper_speed)

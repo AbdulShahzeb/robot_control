@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
 
     package_share_dir = get_package_share_directory('move_robot')
-    gcode_file = os.path.join(package_share_dir, 'gcode', 'heart.gcode')
+    gcode_file = os.path.join(package_share_dir, 'gcode', 'star3d.gcode')
 
     file_launch_arg = DeclareLaunchArgument(
         'file',
