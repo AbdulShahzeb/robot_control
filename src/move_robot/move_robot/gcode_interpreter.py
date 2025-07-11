@@ -51,6 +51,7 @@ class GCodeInterpreter(Node):
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
         self.STEPS_PER_MM = 106.0  # calibrated value
+        self.EXTRUSION_SCALE_FACTOR = 1.1
 
         # Uncomment the line below if you want to use the theoretical value
         # self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
@@ -307,7 +308,7 @@ class GCodeInterpreter(Node):
             if feedrate_mms > 0:
                 # Calculate a duration just for this extrusion action
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
-                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM
+                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
             else:
                 self.get_logger().error(
                     "Cannot perform extrusion-only move with zero feedrate."
@@ -372,7 +373,7 @@ class GCodeInterpreter(Node):
             stepper_speed = 0.0
             if duration_seconds > 0 and delta_e > 0:
                 extrusion_speed_mmps = delta_e / duration_seconds
-                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * 1.1
+                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
 
             speed_msg = Float32()
             speed_msg.data = float(-1 * stepper_speed)

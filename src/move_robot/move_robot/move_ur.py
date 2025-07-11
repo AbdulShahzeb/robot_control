@@ -25,7 +25,6 @@ class URcontrol(Node):
 
         self.duration = 3.0
         self.current_xyz = np.zeros(3)
-        self.sec = False
 
         self.is_moving = False
         self.target_q = None
@@ -80,7 +79,7 @@ class URcontrol(Node):
         self.robot_info_pub_ = self.create_publisher(String, f"/ur10e/robot_log", 10)
         self.is_moving_pub_ = self.create_publisher(Bool, f"/ur10e/is_moving", 10)
 
-        self.is_moving_timer = self.create_timer(0.01, self.publish_is_moving)
+        self.is_moving_timer = self.create_timer(0.002, self.publish_is_moving)
 
     def toggle_log_callback(self, msg):
         self.toggle_log = not self.toggle_log
@@ -100,15 +99,9 @@ class URcontrol(Node):
 
     def get_duration(self, data):
         """
-        Callback function for receiving duration from "/duration_and_steps" topic.
-        Updates the duration variables.
+        Callback function for receiving duration from "/ur10e/movement_duration" topic.
         """
         self.duration = data.data
-
-        if self.duration > 4:
-            self.sec = True
-        else:
-            self.sec = False
 
     def get_current_joint_states(self, data):
         """
@@ -152,7 +145,7 @@ class URcontrol(Node):
                 self.status_pub_.publish(ready_msg)
 
     def calculate_current_xyz(self):
-        """NOT FULLY TESTED"""
+        """Publishes the current pose of the robot's end effector."""
         self.current_xyz = [pose * 1000 for pose in self.robot.fkine(self.robot.q).t]
         pose_msg = Float32MultiArray()
         pose_msg.data = self.current_xyz
@@ -237,11 +230,8 @@ class URcontrol(Node):
         joint_trajectory_point.accelerations = []
         joint_trajectory_point.effort = []
 
-        # Set duration based on sec or nanosec
-        if self.sec:
-            joint_trajectory_point.time_from_start.sec = int(self.duration)
-        else:
-            joint_trajectory_point.time_from_start.nanosec = int(self.duration * 1e9)
+        # Set duration
+        joint_trajectory_point.time_from_start.sec = int(self.duration)
 
         # Assign trajectory point to the message
         joint_trajectory_msg.points = [joint_trajectory_point]
