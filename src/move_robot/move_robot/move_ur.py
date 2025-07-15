@@ -75,7 +75,6 @@ class URcontrol(Node):
         self.calc_pose_pub_ = self.create_publisher(
             Float32MultiArray, f"/ur10e/calculated_xyz", 10
         )
-        self.status_pub_ = self.create_publisher(Int8, f"/ur10e/ready", 10)
         self.robot_info_pub_ = self.create_publisher(String, f"/ur10e/robot_log", 10)
         self.is_moving_pub_ = self.create_publisher(Bool, f"/ur10e/is_moving", 10)
 
@@ -142,7 +141,6 @@ class URcontrol(Node):
                 # Publish the "ready" signal
                 ready_msg = Int8()
                 ready_msg.data = 1
-                self.status_pub_.publish(ready_msg)
 
     def calculate_current_xyz(self):
         """Publishes the current pose of the robot's end effector."""
@@ -199,16 +197,10 @@ class URcontrol(Node):
 
         # Move the robot to the calculated joint angles
         self.move_robot(q)
-        if not self.is_moving:
-            # Publish the "ready" signal
-            ready_msg = Int8()
-            ready_msg.data = 1
-            self.status_pub_.publish(ready_msg)
 
     def move_robot(self, q):
         # Convert input angles to float
         q_float = [float(angle) for angle in q]
-        self.is_moving = True
         self.target_q = np.array(q_float)
         if self.toggle_log:
             self.get_logger().info("New command received. Robot is now moving...")
@@ -231,7 +223,10 @@ class URcontrol(Node):
         joint_trajectory_point.effort = []
 
         # Set duration
-        joint_trajectory_point.time_from_start.sec = int(self.duration)
+        if self.duration <= 4.0:
+            joint_trajectory_point.time_from_start.nanosec = int(self.duration * 1e9)  # Convert s to ns
+        else:
+            joint_trajectory_point.time_from_start.sec = int(self.duration)
 
         # Assign trajectory point to the message
         joint_trajectory_msg.points = [joint_trajectory_point]
@@ -243,6 +238,7 @@ class URcontrol(Node):
         goal_msg = Float32MultiArray()
         goal_msg.data = q_float
         self.goal_pub_.publish(goal_msg)
+        self.is_moving = True
 
         # Print the sent robot command
         if self.toggle_log:

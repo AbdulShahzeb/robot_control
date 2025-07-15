@@ -45,13 +45,14 @@ class GCodeInterpreter(Node):
         self.declare_parameter("y_offset", -360.0)
         self.declare_parameter("z_offset", 195.5)
         self.declare_parameter("wrist_angle", 90.0)
+        self.declare_parameter("print_speed_multiplier", 1.0)
+        self.declare_parameter("extrusion_scale_factor", 1.0)
 
         # Constants for stepper motor calculation
         self.SHAFT_DIAMETER = 11.0
         self.MICROSTEPPING = 16.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
         self.STEPS_PER_MM = 106.0  # calibrated value
-        self.EXTRUSION_SCALE_FACTOR = 1.1
 
         # Uncomment the line below if you want to use the theoretical value
         # self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
@@ -74,6 +75,12 @@ class GCodeInterpreter(Node):
             f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}"
         )
         self.get_logger().info(f"Wrist angle: {self.WRIST_ANGLE}")
+        self.EXTRUSION_SCALE_FACTOR = (
+            self.get_parameter("extrusion_scale_factor").get_parameter_value().double_value
+        )
+        self.PRINT_SPEED_MULTIPLIER = (
+            self.get_parameter("print_speed_multiplier").get_parameter_value().double_value
+        )
 
         # State variables
         self.positioning_state = PositioningState.ABSOLUTE
@@ -308,7 +315,7 @@ class GCodeInterpreter(Node):
             if feedrate_mms > 0:
                 # Calculate a duration just for this extrusion action
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
-                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
+                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
             else:
                 self.get_logger().error(
                     "Cannot perform extrusion-only move with zero feedrate."
@@ -352,7 +359,7 @@ class GCodeInterpreter(Node):
 
             # Publish duration and pose for the robot arm
             duration_msg = Float32()
-            duration_msg.data = float(duration_seconds)
+            duration_msg.data = float(duration_seconds / self.PRINT_SPEED_MULTIPLIER)
             self.duration_pub_.publish(duration_msg)
 
             if self.toggle_log:
@@ -373,7 +380,7 @@ class GCodeInterpreter(Node):
             stepper_speed = 0.0
             if duration_seconds > 0 and delta_e > 0:
                 extrusion_speed_mmps = delta_e / duration_seconds
-                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
+                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
 
             speed_msg = Float32()
             speed_msg.data = float(-1 * stepper_speed)
