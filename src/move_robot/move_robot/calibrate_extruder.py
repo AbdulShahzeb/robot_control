@@ -5,13 +5,11 @@ import time
 import math
 
 # --- Constants ---
-SHAFT_DIAMETER = 11.0
-MICROSTEPPING = 16.0
+SHAFT_DIAMETER = 5.0
+MICROSTEPPING = 32.0
 STEPS_PER_REVOLUTION = 200.0 * MICROSTEPPING
-
 # This is the value we are trying to calibrate!
-# Start with the theoretical value.
-STEPS_PER_MM = 106.0 #STEPS_PER_REVOLUTION / (math.pi * SHAFT_DIAMETER)
+STEPS_PER_MM = STEPS_PER_REVOLUTION / (math.pi * SHAFT_DIAMETER)
 
 class ExtruderCalibrator(Node):
 
@@ -50,7 +48,7 @@ class ExtruderCalibrator(Node):
 
         # 3. Create and publish the speed message to start the motor
         start_msg = Float32()
-        start_msg.data = float(-1*speed_sps)
+        start_msg.data = float(speed_sps)
         self.publisher_.publish(start_msg)
         self.get_logger().info("Motor ON.")
 
@@ -69,8 +67,8 @@ def main(args=None):
     calibrator_node = ExtruderCalibrator()
 
     # --- DEFINE CALIBRATION PARAMETERS HERE ---
-    DISTANCE_TO_EXTRUDE = 50.0  # mm
-    CALIBRATION_SPEED_SPS = 30 # A moderate speed in steps per second
+    DISTANCE_TO_EXTRUDE = 100.0  # mm
+    CALIBRATION_SPEED_SPS = 500 # A moderate speed in steps per second
 
     try:
         calibrator_node.extrude(DISTANCE_TO_EXTRUDE, CALIBRATION_SPEED_SPS)

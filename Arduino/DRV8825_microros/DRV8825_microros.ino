@@ -9,7 +9,7 @@
 #define dirPin 13
 #define stepPin 14
 #define motorInterfaceType 1
-#define microStep 16
+#define microStep 32
 
 // Create the stepper instance
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
@@ -61,6 +61,6 @@ void setup() {
 }
 
 void loop() {
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(5));
+  rclc_executor_spin_some(&executor, RCL_US_TO_NS(10));
   stepper.runSpeed();
 }

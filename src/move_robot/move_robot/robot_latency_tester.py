@@ -34,7 +34,9 @@ class RobotLatencyTester(Node):
         self.waiting_for_movement = False
         self.test_active = False
         self.test_round = 1
-        self.total_rounds = 3
+        self.total_rounds = 5
+        self.final_avg_traj_latency = 0
+        self.final_avg_move_latency = 0
 
         self.init_robot()
 
@@ -110,7 +112,7 @@ class RobotLatencyTester(Node):
 
         if is_moving and self.waiting_for_movement and self.test_active:
             movement_time = time.time_ns()
-            movement_latency = movement_time - self.ping_time - self.robot_clock_latency
+            movement_latency = movement_time - self.ping_time
 
             self.movement_latencies.append(movement_latency)
             self.waiting_for_movement = False
@@ -122,6 +124,7 @@ class RobotLatencyTester(Node):
             avg_traj_latency_ms = (
                 sum(self.traj_latencies) / len(self.traj_latencies) / 1e6
             )
+            self.final_avg_traj_latency += avg_traj_latency_ms
             print(f"Average ping-to-trajectory latency: {avg_traj_latency_ms:.3f} ms")
             print(f"Trajectory measurements: {len(self.traj_latencies)}/60")
 
@@ -129,6 +132,7 @@ class RobotLatencyTester(Node):
             avg_movement_latency_ms = (
                 sum(self.movement_latencies) / len(self.movement_latencies) / 1e6
             )
+            self.final_avg_move_latency += avg_movement_latency_ms
             print(f"Average ping-to-movement latency: {avg_movement_latency_ms:.3f} ms")
             print(f"Movement measurements: {len(self.movement_latencies)}/60")
 
@@ -150,8 +154,17 @@ class RobotLatencyTester(Node):
         print(f"\nStarting test round {self.test_round}/{self.total_rounds}")
 
     def print_final_results(self):
+        raw_robot_latency = (self.final_avg_move_latency - self.final_avg_traj_latency) / self.total_rounds
         print(f"\n{'='*50}")
         print(f"ALL {self.total_rounds} ROUNDS COMPLETED")
+        print(f"Average time taken from PING to Trajectory Generation: "
+              f"{self.final_avg_traj_latency / self.total_rounds:.3f} ms")
+        print(f"Average time taken from PING to Robot Movement: "
+              f"{self.final_avg_move_latency / self.total_rounds:.3f} ms")
+        print(f"Average Robot Latency (Trajectory Generation to Robot Movement): "
+              f"{raw_robot_latency:.3f} ms")
+        print(f"Average Robot Latency excluding Robot Clock Latency: "
+              f"{raw_robot_latency - self.robot_clock_latency / 1e6:.3f} ms")
         print(f"{'='*50}")
 
 

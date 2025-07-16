@@ -49,13 +49,10 @@ class GCodeInterpreter(Node):
         self.declare_parameter("extrusion_scale_factor", 1.0)
 
         # Constants for stepper motor calculation
-        self.SHAFT_DIAMETER = 11.0
-        self.MICROSTEPPING = 16.0
+        self.SHAFT_DIAMETER = 5.0
+        self.MICROSTEPPING = 32.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
-        self.STEPS_PER_MM = 106.0  # calibrated value
-
-        # Uncomment the line below if you want to use the theoretical value
-        # self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
+        self.STEPS_PER_MM = self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
 
         # Offsets from robot base to print bed origin (in mm)
         self.X_OFFSET = (
@@ -323,7 +320,7 @@ class GCodeInterpreter(Node):
                 stepper_speed = 0.0
 
             speed_msg = Float32()
-            speed_msg.data = float(-1 * stepper_speed)
+            speed_msg.data = float(stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return False
@@ -383,7 +380,7 @@ class GCodeInterpreter(Node):
                 stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
 
             speed_msg = Float32()
-            speed_msg.data = float(-1 * stepper_speed)
+            speed_msg.data = float(stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
             return True

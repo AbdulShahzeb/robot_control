@@ -41,8 +41,8 @@ def generate_launch_description():
             {'x_offset': -830.0,
             'y_offset': -235.0,
             'z_offset': 195.8,
-            'print_speed_multiplier': 2.4,
-            'extrusion_scale_factor': 1.6,
+            'print_speed_multiplier': 2.0,
+            'extrusion_scale_factor': 1.0,
             'wrist_angle': 90.0},
             {'file': LaunchConfiguration('file')}
         ]

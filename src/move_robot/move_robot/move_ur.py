@@ -10,6 +10,8 @@ import roboticstoolbox as rtb
 import spatialmath as sm
 import sys
 
+MAX_UINT32 = 2**32 - 1  # 4,294,967,295
+MAX_DURATION_SEC = MAX_UINT32 / 1e9
 
 class URcontrol(Node):
     """
@@ -223,7 +225,7 @@ class URcontrol(Node):
         joint_trajectory_point.effort = []
 
         # Set duration
-        if self.duration <= 4.0:
+        if self.duration <= MAX_DURATION_SEC:
             joint_trajectory_point.time_from_start.nanosec = int(self.duration * 1e9)  # Convert s to ns
         else:
             joint_trajectory_point.time_from_start.sec = int(self.duration)

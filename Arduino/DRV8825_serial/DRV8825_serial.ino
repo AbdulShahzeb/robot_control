@@ -4,7 +4,7 @@
 #define dirPin 13
 #define stepPin 14
 #define motorInterfaceType 1
-#define microStep 16
+#define microStep 32
 
 // Create an instance of the AccelStepper class
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
@@ -29,9 +29,9 @@ void loop() {
   if (Serial.available() > 0) {
     String input = Serial.readStringUntil('\n');
     input.trim();  // Remove whitespace
-    int speedInput = input.toInt();
+    float speedInput = input.toFloat();
 
-    currentSpeed = -speedInput * microStep;  // Convert to microstepped speed
+    currentSpeed = speedInput * microStep;  // Convert to microstepped speed
     stepper.setSpeed(currentSpeed);
     Serial.print("Updated speed: ");
     Serial.println(currentSpeed);
