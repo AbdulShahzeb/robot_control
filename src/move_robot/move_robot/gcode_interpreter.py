@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
+import rclpy.duration
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Float32, Bool
@@ -312,7 +313,7 @@ class GCodeInterpreter(Node):
             if feedrate_mms > 0:
                 # Calculate a duration just for this extrusion action
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
-                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
+                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
             else:
                 self.get_logger().error(
                     "Cannot perform extrusion-only move with zero feedrate."
@@ -322,6 +323,8 @@ class GCodeInterpreter(Node):
             speed_msg = Float32()
             speed_msg.data = float(stepper_speed)
             self.stepper_pub_.publish(speed_msg)
+
+            self.get_clock().sleep_for(rclpy.duration.Duration(nanoseconds=int(duration_for_extrusion * 1e9)))
 
             return False
 
