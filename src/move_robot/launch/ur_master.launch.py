@@ -38,10 +38,10 @@ def generate_launch_description():
         name='gcode_interpreter',
         output='screen',
         parameters=[
-            {'x_offset': -935.0,
+            {'x_offset': -920.0,
             'y_offset': -250.0,
-            'z_offset': 199.8,
-            'print_speed_multiplier': 3.0,
+            'z_offset': 193.8,
+            'print_speed_multiplier': 4.0,
             'extrusion_scale_factor': 1.0,
             'wrist_angle': 90.0},
             {'file': LaunchConfiguration('file')}
