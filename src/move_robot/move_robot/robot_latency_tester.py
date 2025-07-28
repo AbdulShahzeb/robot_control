@@ -6,37 +6,26 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Float32, Bool
 from sensor_msgs.msg import JointState
 import time
+import numpy as np
 
 
 class RobotLatencyTester(Node):
     def __init__(self):
         super().__init__("robot_latency_tester")
 
-        self.duration_pub = self.create_publisher(
-            Float32, "/ur10e/movement_duration", 10
-        )
+        self.duration_pub = self.create_publisher(Float32, "/ur10e/movement_duration", 10)
         self.pose_pub = self.create_publisher(Twist, "/ur10e/point_pose", 10)
-        self.is_moving_sub = self.create_subscription(
-            Bool, "/ur10e/is_moving", self.is_moving_callback, 10
-        )
-        self.joint_state_sub = self.create_subscription(
-            JointState, "/joint_states", self.joint_state_callback, 10
-        )
+        self.ik_complete_sub = self.create_subscription(Bool, "/ur10e/ik_complete", self.ik_complete_callback, 10)
+        self.joint_state_sub = self.create_subscription(JointState, "/joint_states", self.joint_state_callback, 10)
 
-        self.ping_time = 0
-        self.robot_clock_latency = 3e6
-        self.ur_control_latency = 1e6
         self.traj_latencies = []
         self.movement_latencies = []
-        self.cycle_count = 0
+        self.step_count = 0
         self.current_x = -1000.0
-        self.waiting_for_trajectory = False
+        self.waiting_for_traj = False
         self.waiting_for_movement = False
+        self.start_time = 0
         self.test_active = False
-        self.test_round = 1
-        self.total_rounds = 5
-        self.final_avg_traj_latency = 0
-        self.final_avg_move_latency = 0
 
         self.init_robot()
 
@@ -60,25 +49,19 @@ class RobotLatencyTester(Node):
         self.duration_pub.publish(duration_msg)
 
         self.test_active = True
-        self.timer = self.create_timer(1.0, self.measurement_cycle)
-        print(f"Starting test round {self.test_round}/{self.total_rounds}")
+        self.timer = self.create_timer(0.3, self.measurement_cycle)
 
     def measurement_cycle(self):
-        if self.cycle_count >= 60:
-            self.print_round_results()
-
-            if self.test_round < self.total_rounds:
-                self.reset_for_next_round()
-            else:
-                self.print_final_results()
-                self.timer.cancel()
-                self.test_active = False
-                self.destroy_node()
-                rclpy.shutdown()
+        if self.step_count >= 500:
+            self.print_results()
+            self.timer.cancel()
+            self.test_active = False
+            self.destroy_node()
+            rclpy.shutdown()
             return
 
         self.current_x += 2.0
-        self.ping_time = time.time_ns()
+        self.start_time = time.perf_counter()
 
         pose_msg = Twist()
         pose_msg.linear.x = self.current_x
@@ -89,83 +72,51 @@ class RobotLatencyTester(Node):
         pose_msg.angular.z = 90.0
         self.pose_pub.publish(pose_msg)
 
-        self.waiting_for_trajectory = True
+        self.waiting_for_traj = True
         self.waiting_for_movement = True
-        self.cycle_count += 1
+        self.step_count += 1
 
-    def is_moving_callback(self, msg):
-        if msg.data and self.waiting_for_trajectory and self.test_active:
-            traj_time = time.time_ns()
-            traj_latency = traj_time - self.ping_time - self.ur_control_latency
-
+    def ik_complete_callback(self, msg):
+        if self.waiting_for_traj and self.test_active:
+            traj_time = time.perf_counter()
+            traj_latency = (traj_time - self.start_time) * 1000
             self.traj_latencies.append(traj_latency)
-            self.waiting_for_trajectory = False
+            self.waiting_for_traj = False
 
     def joint_state_callback(self, msg):
-        # Check if robot is moving by looking at joint velocities
-        is_moving = False
-        if msg.velocity:
-            for velocity in msg.velocity:
-                if abs(velocity) > 0.0:  # Any non-zero velocity means robot is moving
-                    is_moving = True
-                    break
+        if self.waiting_for_movement and self.test_active and msg.velocity:
+            is_moving = any(abs(velocity) > 0.0 for velocity in msg.velocity)
 
-        if is_moving and self.waiting_for_movement and self.test_active:
-            movement_time = time.time_ns()
-            movement_latency = movement_time - self.ping_time
+            if is_moving:
+                movement_time = time.perf_counter()
+                movement_latency = (movement_time - self.start_time) * 1000
+                self.movement_latencies.append(movement_latency)
+                self.waiting_for_movement = False
 
-            self.movement_latencies.append(movement_latency)
-            self.waiting_for_movement = False
-
-    def print_round_results(self):
-        print(f"\n=== Round {self.test_round} Results ===")
-
+    def print_results(self):
+        print(f"\n{'='*60}")
+        print(f"LATENCY TEST RESULTS - 500 MEASUREMENTS")
+        print(f"{'='*60}")
+        
         if self.traj_latencies:
-            avg_traj_latency_ms = (
-                sum(self.traj_latencies) / len(self.traj_latencies) / 1e6
-            )
-            self.final_avg_traj_latency += avg_traj_latency_ms
-            print(f"Average ping-to-trajectory latency: {avg_traj_latency_ms:.3f} ms")
-            print(f"Trajectory measurements: {len(self.traj_latencies)}/60")
+            traj_array = np.array(self.traj_latencies)
+            print(f"TRAJECTORY LATENCY (IK completion):")
+            print(f"  Average: {np.mean(traj_array):.4f} ms")
+            print(f"  Min:     {np.min(traj_array):.4f} ms")
+            print(f"  Max:     {np.max(traj_array):.4f} ms")
+            print(f"  Std Dev: {np.std(traj_array):.4f} ms")
+            print(f"  Count:   {len(self.traj_latencies)}/500")
 
         if self.movement_latencies:
-            avg_movement_latency_ms = (
-                sum(self.movement_latencies) / len(self.movement_latencies) / 1e6
-            )
-            self.final_avg_move_latency += avg_movement_latency_ms
-            print(f"Average ping-to-movement latency: {avg_movement_latency_ms:.3f} ms")
-            print(f"Movement measurements: {len(self.movement_latencies)}/60")
+            move_array = np.array(self.movement_latencies)
+            print(f"\nMOVEMENT LATENCY (robot starts moving):")
+            print(f"  Average: {np.mean(move_array):.4f} ms")
+            print(f"  Min:     {np.min(move_array):.4f} ms")
+            print(f"  Max:     {np.max(move_array):.4f} ms")
+            print(f"  Std Dev: {np.std(move_array):.4f} ms")
+            print(f"  Count:   {len(self.movement_latencies)}/500")
 
-        if self.traj_latencies and self.movement_latencies:
-            avg_robot_latency = (
-                avg_movement_latency_ms - avg_traj_latency_ms
-            )
-            print(f"Total robot latency: {avg_robot_latency:.3f} ms")
-
-    def reset_for_next_round(self):
-        self.test_round += 1
-        self.cycle_count = 0
-        self.current_x = -1000.0
-        self.traj_latencies = []
-        self.movement_latencies = []
-        self.waiting_for_trajectory = False
-        self.waiting_for_movement = False
-
-        print(f"\nStarting test round {self.test_round}/{self.total_rounds}")
-
-    def print_final_results(self):
-        raw_robot_latency = (self.final_avg_move_latency - self.final_avg_traj_latency) / self.total_rounds
-        print(f"\n{'='*50}")
-        print(f"ALL {self.total_rounds} ROUNDS COMPLETED")
-        print(f"Average time taken from PING to Trajectory Generation: "
-              f"{self.final_avg_traj_latency / self.total_rounds:.3f} ms")
-        print(f"Average time taken from PING to Robot Movement: "
-              f"{self.final_avg_move_latency / self.total_rounds:.3f} ms")
-        print(f"Average Robot Latency (Trajectory Generation to Robot Movement): "
-              f"{raw_robot_latency:.3f} ms")
-        print(f"Average Robot Latency excluding Robot Clock Latency: "
-              f"{raw_robot_latency - self.robot_clock_latency / 1e6:.3f} ms")
-        print(f"{'='*50}")
+        print(f"{'='*60}")
 
 
 def main():

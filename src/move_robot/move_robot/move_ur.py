@@ -79,6 +79,7 @@ class URcontrol(Node):
         )
         self.robot_info_pub_ = self.create_publisher(String, f"/ur10e/robot_log", 10)
         self.is_moving_pub_ = self.create_publisher(Bool, f"/ur10e/is_moving", 10)
+        self.ik_complete_pub_ = self.create_publisher(Bool, f"/ur10e/ik_complete", 10)
 
         self.is_moving_timer = self.create_timer(0.002, self.publish_is_moving)
 
@@ -262,6 +263,9 @@ class URcontrol(Node):
 
         startingQ = self.robot.q  # Uses Current Joint Position as starting point
         qp = self.robot_DH.ikine_LM(desiredPose, q0=startingQ, joint_limits=True)
+        ik_msg = Bool()
+        ik_msg.data = True
+        self.ik_complete_pub_.publish(ik_msg)
 
         return qp.q
 
