@@ -7,7 +7,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Float32, Bool
 import math
 import os
-from time import sleep
+from time import sleep, time
 from enum import Enum, auto
 
 
@@ -88,6 +88,7 @@ class GCodeInterpreter(Node):
         self.prev_is_moving = False
         self.is_executing = False
         self.first_move_executed = False
+        self.start_time = None
 
         # G-code command queue and execution state
         self.gcode_commands = []
@@ -170,6 +171,7 @@ class GCodeInterpreter(Node):
         self.get_logger().info("Starting G-code execution")
         self.is_executing = True
         self.command_index = 0
+        self.start_time = time()
 
         # Execute the first command
         self.execute_next_command()
@@ -212,13 +214,26 @@ class GCodeInterpreter(Node):
             if len(self.gcode_commands) > 0
             else 0
         )
+
+        elapsed_time = time() - self.start_time
+        if percentage > 0:
+            estimated_total_time = elapsed_time / percentage
+            estimated_remaining_time = estimated_total_time - elapsed_time
+            remaining_minutes = int(estimated_remaining_time // 60)
+            remaining_seconds = int(estimated_remaining_time % 60)
+            total_minutes = int(estimated_total_time // 60)
+            total_seconds = int(estimated_total_time % 60)
+            time_remaining_str = f"Est. remaining: {remaining_minutes}m {remaining_seconds}s / {total_minutes}m {total_seconds}s total"
+        else:
+            time_remaining_str = "Estimated time remaining: calculating..."
+
         if self.toggle_log:
             self.get_logger().info(
-                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}: {command}. Progress: {percentage:.0%}"
+                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}: {command}. Progress: {percentage:.0%}. {time_remaining_str}"
             )
         else:
             self.get_logger().info(
-                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}. Progress: {percentage:.0%}"
+                f"Executing command {self.command_index + 1}/{len(self.gcode_commands)}. Progress: {percentage:.0%}. {time_remaining_str}"
             )
 
         # Process the command
