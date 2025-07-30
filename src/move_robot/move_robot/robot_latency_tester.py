@@ -15,6 +15,7 @@ class RobotLatencyTester(Node):
 
         self.duration_pub = self.create_publisher(Float32, "/ur10e/movement_duration", 10)
         self.pose_pub = self.create_publisher(Twist, "/ur10e/point_pose", 10)
+        self.ik_complete_sub = self.create_subscription(Bool, "/ur10e/ik_complete", self.ik_complete_callback, 10)
         self.joint_state_sub = self.create_subscription(JointState, "/joint_states", self.joint_state_callback, 10)
 
         self.traj_latencies = []
@@ -45,11 +46,11 @@ class RobotLatencyTester(Node):
 
         time.sleep(3)
 
-        duration_msg.data = 0.1
+        duration_msg.data = 0.05
         self.duration_pub.publish(duration_msg)
 
         self.test_active = True
-        self.timer = self.create_timer(1.0, self.measurement_cycle)
+        self.timer = self.create_timer(1.5, self.measurement_cycle)
 
     def measurement_cycle(self):
         if self.step_count >= 100:
@@ -72,12 +73,20 @@ class RobotLatencyTester(Node):
         self.start_time = time.perf_counter()
         self.pose_pub.publish(pose_msg)
 
+        self.waiting_for_traj = True
         self.waiting_for_movement = True
         self.step_count += 1
 
+    def ik_complete_callback(self, msg):
+        if self.waiting_for_traj and self.test_active:
+            traj_time = time.perf_counter()
+            traj_latency = (traj_time - self.start_time) * 1000
+            self.traj_latencies.append(traj_latency)
+            self.waiting_for_traj = False
+
     def joint_state_callback(self, msg):
         if self.waiting_for_movement and self.test_active and msg.velocity:
-            if any(abs(velocity) > 0 for velocity in msg.velocity):
+            if any(abs(velocity) > 0.00005 for velocity in msg.velocity):
                 movement_time = time.perf_counter()
                 movement_latency = (movement_time - self.start_time) * 1000
                 self.movement_latencies.append(movement_latency)
@@ -85,7 +94,7 @@ class RobotLatencyTester(Node):
 
     def print_results(self):
         print(f"\n{'='*60}")
-        print(f"LATENCY TEST RESULTS - 500 MEASUREMENTS")
+        print(f"LATENCY TEST RESULTS - {self.step_count} MEASUREMENTS")
         print(f"{'='*60}")
 
         if self.traj_latencies:

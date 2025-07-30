@@ -29,6 +29,7 @@ setup(
             'keyboard_node = move_robot.keyboard:main',
             'arduino_latency_tester = move_robot.arduino_latency_tester:main',
             'robot_latency_tester = move_robot.robot_latency_tester:main',
+            'velocity_error_tester = move_robot.velocity_error_tester:main',
         ],
     },
 )
