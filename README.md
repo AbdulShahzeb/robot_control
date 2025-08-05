@@ -25,6 +25,7 @@ This package provides ROS 2 nodes for controlling the UR10e, acting as an interf
 5.  Install required pip modules.
     ```shell
     pip install -r requirements.txt
+    pip install --force numpy==1.26.4 scipy==1.11.4
     ```
 
 6.  Navigate to the root of the repository and execute the install the URDFs/Xacros for RoboticsToolbox:
