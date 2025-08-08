@@ -38,12 +38,18 @@ def generate_launch_description():
         name='gcode_interpreter',
         output='screen',
         parameters=[
-            {'x_offset': -875.0,
-            'y_offset': -270.0,
-            'z_offset': 193.0,
-            'print_speed_multiplier': 3.5,
-            'extrusion_scale_factor': 1.2,
-            'wrist_angle': 90.0},
+            {
+                # Offsets
+                'x_offset': -875.0,
+                'y_offset': -270.0,
+                'z_offset': 193.0,
+                'wrist_angle': 90.0,
+
+                # Speed and extrusion
+                'print_speed_multiplier': 4,
+                'extrusion_scale_factor': 1.15,
+                'first_layer_speed_factor': 0.4
+            },
             {'file': LaunchConfiguration('file')}
         ]
     )

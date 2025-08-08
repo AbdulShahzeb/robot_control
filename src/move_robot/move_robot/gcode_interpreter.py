@@ -48,6 +48,7 @@ class GCodeInterpreter(Node):
         self.declare_parameter("wrist_angle", 90.0)
         self.declare_parameter("print_speed_multiplier", 1.0)
         self.declare_parameter("extrusion_scale_factor", 1.0)
+        self.declare_parameter("first_layer_speed_factor", 0.4)
 
         # Constants for stepper motor calculation
         self.SHAFT_DIAMETER = 5.0
@@ -67,6 +68,9 @@ class GCodeInterpreter(Node):
         )
         self.WRIST_ANGLE = (
             self.get_parameter("wrist_angle").get_parameter_value().double_value
+        )
+        self.FIRST_LAYER_SPEED_FACTOR = (
+            self.get_parameter("first_layer_speed_factor").get_parameter_value().double_value
         )
         self.ROBOT_MAX_SPEED = 100.0  # mm/s
         self.get_logger().info(
@@ -317,7 +321,7 @@ class GCodeInterpreter(Node):
         is_xyz_move = xyz_move_distance > 0.001
         is_e_move = abs(delta_e) > 0.001
 
-        # Case 1: Extrusion Ony (e.g. G1 F2700 E-5)
+        # Case 1: Extrusion Only (e.g. G1 F2700 E-5)
         if not is_xyz_move and is_e_move:
             self.get_logger().info(
                 f"Executing extrusion-only move of {delta_e:.2f} mm."
@@ -374,7 +378,10 @@ class GCodeInterpreter(Node):
 
             # Publish duration and pose for the robot arm
             duration_msg = Float32()
-            duration_msg.data = float(duration_seconds / self.PRINT_SPEED_MULTIPLIER)
+            if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4:
+                duration_msg.data = float(duration_seconds / (self.PRINT_SPEED_MULTIPLIER * self.FIRST_LAYER_SPEED_FACTOR))
+            else:
+                duration_msg.data = float(duration_seconds / self.PRINT_SPEED_MULTIPLIER)
             self.duration_pub_.publish(duration_msg)
 
             if self.toggle_log:
@@ -394,7 +401,10 @@ class GCodeInterpreter(Node):
             # Calculate and publish stepper speed for the combined move
             stepper_speed = 0.0
             if duration_seconds > 0 and delta_e > 0:
-                extrusion_speed_mmps = delta_e / duration_seconds
+                if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4:
+                    extrusion_speed_mmps = self.FIRST_LAYER_SPEED_FACTOR * delta_e / duration_seconds
+                else:
+                    extrusion_speed_mmps = delta_e / duration_seconds
                 stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
 
             speed_msg = Float32()
