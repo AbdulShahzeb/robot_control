@@ -50,6 +50,7 @@ Thumbs.db
 
 #folders
 /log
+/venv
 /.vscode
 /src/.vscode
 
