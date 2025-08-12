@@ -46,7 +46,7 @@ class RobotLatencyTester(Node):
 
         time.sleep(3)
 
-        duration_msg.data = 0.05
+        duration_msg.data = 0.2
         self.duration_pub.publish(duration_msg)
 
         self.test_active = True
