@@ -7,26 +7,26 @@ import gc
 def test_ik_method(robot_dh, poses, joint_positions, method_name, ik_function):
     """Test a specific IK method and return latency statistics"""
     print(f"\nTesting {method_name}...")
-    
+
     # Clear memory before test
     gc.collect()
-    
+
     latencies = []
     iterations = len(poses) - 1
 
     for i in range(1, iterations + 1):
         current_q = joint_positions[i-1]
         target_pose = poses[i]
-        
+
         start_time = time.perf_counter()
-        result = ik_function(target_pose, q0=current_q)
+        ik_function(target_pose, q0=current_q)
         end_time = time.perf_counter()
-        
+
         latencies.append(end_time - start_time)
-    
+
     # Convert to milliseconds
     latencies_ms = np.array(latencies) * 1000
-    
+
     avg_latency = np.mean(latencies_ms)
     min_latency = np.min(latencies_ms)
     max_latency = np.max(latencies_ms)
@@ -37,12 +37,12 @@ def test_ik_method(robot_dh, poses, joint_positions, method_name, ik_function):
     print(f"  Min latency: {min_latency:.4f} ms")
     print(f"  Max latency: {max_latency:.4f} ms")
     print(f"  Std deviation: {std_latency:.4f} ms")
-    
+
     # Clear latencies array and force garbage collection
     del latencies
     del latencies_ms
     gc.collect()
-    
+
     return {
         'method': method_name,
         'avg': avg_latency,
@@ -55,13 +55,13 @@ def main():
     print("Initializing robot models...")
     robot = rtb.models.UR5()
     robot_dh = rtb.models.DH.UR5()
-    
+
     # Generate test poses (same for all methods)
     print("Generating test poses...")
     start_pose = [-0.2, -0.2, 0.200, 0, np.pi, 0]
     start_se3 = sm.SE3(start_pose[:3]) * sm.SE3.RPY(start_pose[3:])
-    start_q = robot_dh.ikine_LM(start_se3).q
-    
+    start_q, _, _, _, _  = robot_dh.ik_LM(start_se3)
+
     poses = []
     joint_positions = []
 
@@ -74,46 +74,65 @@ def main():
         z_offset = np.random.uniform(-0.05, 0.05)
 
         pose = sm.SE3([start_pose[0] + x_offset, start_pose[1] + y_offset, start_pose[2] + z_offset]) * sm.SE3.RPY(start_pose[3:])
-        target_q = robot_dh.ikine_LM(pose, q0=start_q).q
-        
+        target_q, _, _, _, _ = robot_dh.ik_LM(pose, q0=start_q)
+
         poses.append(pose)
         joint_positions.append(target_q)
-    
+
     print(f"Generated {len(poses)} poses for testing")
-    
-    # Test all three IK methods
+
     results = []
-    
-    # Test Levenberg-Marquardt
     results.append(test_ik_method(
         robot_dh, poses, joint_positions, 
-        "LM", 
+        "ik_LM", 
+        robot_dh.ik_LM
+    ))
+
+    time.sleep(0.1)
+    gc.collect()
+
+    results.append(test_ik_method(
+        robot_dh, poses, joint_positions, 
+        "ik_GN", 
+        robot_dh.ik_GN
+    ))
+
+    time.sleep(0.1)
+    gc.collect()
+
+    results.append(test_ik_method(
+        robot_dh, poses, joint_positions, 
+        "ik_NR", 
+        robot_dh.ik_NR
+    ))
+
+    time.sleep(0.1)
+    gc.collect()
+
+    results.append(test_ik_method(
+        robot_dh, poses, joint_positions, 
+        "ikine_LM", 
         robot_dh.ikine_LM
     ))
-    
-    # Clear memory between tests
-    time.sleep(0.1)  # Brief pause
+
+    time.sleep(0.1)
     gc.collect()
-    
-    # Test Gauss-Newton
+
     results.append(test_ik_method(
         robot_dh, poses, joint_positions, 
-        "GN", 
+        "ikine_GN", 
         robot_dh.ikine_GN
     ))
-    
-    # Clear memory between tests
-    time.sleep(0.1)  # Brief pause
+
+    time.sleep(0.1)
     gc.collect()
-    
-    # Test Newton-Raphson
+
     results.append(test_ik_method(
         robot_dh, poses, joint_positions, 
-        "NR", 
+        "ikine_NR", 
         robot_dh.ikine_NR
     ))
-    
-    # Summary comparison
+
     print("\n" + "="*60)
     print("SUMMARY COMPARISON")
     print("="*60)
@@ -122,12 +141,10 @@ def main():
     
     for result in results:
         print(f"{result['method']:<20} {result['avg']:<12.4f} {result['min']:<12.4f} {result['max']:<12.4f} {result['std']:<12.4f}")
-    
-    # Find fastest method
+
     fastest = min(results, key=lambda x: x['avg'])
     print(f"\nFastest method: {fastest['method']} with {fastest['avg']:.4f} ms average latency")
-    
-    # Calculate relative performance
+
     print("\nRelative Performance (compared to fastest):")
     for result in results:
         ratio = result['avg'] / fastest['avg']

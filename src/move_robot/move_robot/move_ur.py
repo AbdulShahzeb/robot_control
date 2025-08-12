@@ -260,10 +260,10 @@ class URcontrol(Node):
         yaw = np.deg2rad(rz)
         desiredPose = sm.SE3(x, y, z) * sm.SE3.RPY(roll, pitch, yaw, order="zyx")
 
-        startingQ = self.robot.q  # Uses Current Joint Position as starting point
-        qp = self.robot_DH.ikine_LM(desiredPose, q0=startingQ, joint_limits=True)
+        startingQ = self.robot.q
+        qp, _, _, _, _ = self.robot_DH.ik_LM(desiredPose, q0=startingQ, joint_limits=True)
 
-        return qp.q
+        return qp
 
     def publish_is_moving(self):
         is_moving_msg = Bool()

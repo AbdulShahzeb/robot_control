@@ -8,7 +8,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
 
     package_share_dir = get_package_share_directory('move_robot')
-    gcode_file = os.path.join(package_share_dir, 'gcode', 'square_vase.gcode')
+    gcode_file = os.path.join(package_share_dir, 'gcode', 'square_vase_150.gcode')
 
     file_launch_arg = DeclareLaunchArgument(
         'file',
@@ -42,13 +42,13 @@ def generate_launch_description():
                 # Offsets
                 'x_offset': -875.0,
                 'y_offset': -270.0,
-                'z_offset': 193.0,
+                'z_offset': 193.15,
                 'wrist_angle': 90.0,
 
                 # Speed and extrusion
-                'print_speed_multiplier': 4,
-                'extrusion_scale_factor': 1.15,
-                'first_layer_speed_factor': 0.4
+                'print_speed_multiplier': 1.25,
+                'extrusion_scale_factor': 1.5,
+                'first_layer_speed_factor': 0.75,
             },
             {'file': LaunchConfiguration('file')}
         ]
