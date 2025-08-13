@@ -47,9 +47,9 @@ def generate_launch_description():
 
                 # Speed and extrusion
                 'print_speed_multiplier': 1.25,
-                'extrusion_scale_factor': 1.5,
+                'extrusion_scale_factor': 1.67,
                 'first_layer_speed_factor': 0.75,
-                'split_threshold': 30.0,
+                'split_threshold': 40.0,
             },
             {'file': LaunchConfiguration('file')}
         ]

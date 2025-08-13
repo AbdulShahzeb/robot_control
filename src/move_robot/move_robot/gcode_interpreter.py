@@ -39,6 +39,12 @@ class GCodeInterpreter(Node):
             Bool, "/kb/shutdown", self.shutdown_callback, 10
         )
         self.shutdown_requested = False
+        self.speed_multiplier_sub = self.create_subscription(
+            Float32, "/kb/speed_multiplier", self.speed_multiplier_callback, 10
+        )
+        self.extrusion_scale_sub = self.create_subscription(
+            Float32, "/kb/extrusion_scale", self.extrusion_scale_callback, 10
+        )
 
         # Parameters
         self.declare_parameter("file", "cube.gcode")
@@ -451,6 +457,20 @@ class GCodeInterpreter(Node):
 
     def toggle_log_callback(self, msg):
         self.toggle_log = not self.toggle_log
+
+    def speed_multiplier_callback(self, msg):
+        speed_value = msg.data
+        self.PRINT_SPEED_MULTIPLIER = speed_value
+        self.get_logger().info(
+            f"Updated print speed multiplier to {self.PRINT_SPEED_MULTIPLIER}"
+        )
+
+    def extrusion_scale_callback(self, msg):
+        extrusion_value = msg.data
+        self.EXTRUSION_SCALE_FACTOR = extrusion_value
+        self.get_logger().info(
+            f"Updated extrusion scale factor to {self.EXTRUSION_SCALE_FACTOR}"
+        )
 
     def shutdown_callback(self, msg):
         self.get_logger().info("Received shutdown signal. Exiting...")
