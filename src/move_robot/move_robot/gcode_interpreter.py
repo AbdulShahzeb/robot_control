@@ -49,6 +49,7 @@ class GCodeInterpreter(Node):
         self.declare_parameter("print_speed_multiplier", 1.0)
         self.declare_parameter("extrusion_scale_factor", 1.0)
         self.declare_parameter("first_layer_speed_factor", 0.4)
+        self.declare_parameter("split_threshold", 50.0)
 
         # Constants for stepper motor calculation
         self.SHAFT_DIAMETER = 5.0
@@ -82,6 +83,9 @@ class GCodeInterpreter(Node):
         )
         self.PRINT_SPEED_MULTIPLIER = (
             self.get_parameter("print_speed_multiplier").get_parameter_value().double_value
+        )
+        self.SPLIT_THRESHOLD = (
+            self.get_parameter("split_threshold").get_parameter_value().double_value
         )
 
         # State variables
@@ -349,7 +353,6 @@ class GCodeInterpreter(Node):
 
         # Case 2: Movement
         elif is_xyz_move:
-
             duration_seconds = 0.0
 
             if not self.first_move_executed:
@@ -358,6 +361,32 @@ class GCodeInterpreter(Node):
                     f"Executing first movement, Duration={duration_seconds:.2f} s."
                 )
                 self.first_move_executed = True
+            elif xyz_move_distance > self.SPLIT_THRESHOLD and self.positioning_state == PositioningState.ABSOLUTE and g_code == 1:
+                # Subdivide large moves into smaller segments
+                mid_command = {
+                    "G": g_code,
+                    "X": prev_position["X"] + delta_x / 2.0,
+                    "Y": prev_position["Y"] + delta_y / 2.0,
+                    "Z": prev_position["Z"] + delta_z / 2.0,
+                    "E": prev_extrusion + delta_e / 2.0,
+                    "F": self.current_feedrate
+                }
+                final_command = {
+                    "G": g_code,
+                    "X": self.current_position["X"],
+                    "Y": self.current_position["Y"],
+                    "Z": self.current_position["Z"],
+                    "E": self.current_extrusion,
+                    "F": self.current_feedrate
+                }
+
+                self.gcode_commands[self.command_index] = mid_command
+                self.gcode_commands.insert(self.command_index + 1, final_command)
+                self.current_position = prev_position.copy()
+                self.current_extrusion = prev_extrusion
+
+                self.command_index -= 1
+                return False
             else:
                 effective_speed_mms = 0.0
                 if g_code == 0:

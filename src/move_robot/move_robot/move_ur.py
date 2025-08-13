@@ -261,7 +261,10 @@ class URcontrol(Node):
         desiredPose = sm.SE3(x, y, z) * sm.SE3.RPY(roll, pitch, yaw, order="zyx")
 
         startingQ = self.robot.q
-        qp, _, _, _, _ = self.robot_DH.ik_LM(desiredPose, q0=startingQ, joint_limits=True)
+        qp, success, _, _, _ = self.robot_DH.ik_LM(desiredPose, q0=startingQ, joint_limits=True)
+        if not success:
+            self.get_logger().warn("C++ solver failed to find a solution. Using Python solver instead.")
+            qp = self.robot_DH.ikine_LM(desiredPose, q0=startingQ, joint_limits=True).q
 
         return qp
 
