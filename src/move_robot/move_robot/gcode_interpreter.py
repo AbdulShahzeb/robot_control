@@ -46,6 +46,10 @@ class GCodeInterpreter(Node):
             Float32, "/kb/extrusion_scale", self.extrusion_scale_callback, 10
         )
 
+        self.next_step_sub = self.create_subscription(
+            Bool, "/kb/next_step", self.next_step_callback, 10
+        )
+
         # Parameters
         self.declare_parameter("file", "cube.gcode")
         self.declare_parameter("x_offset", -900.0)
@@ -471,6 +475,10 @@ class GCodeInterpreter(Node):
         self.get_logger().info(
             f"Updated extrusion scale factor to {self.EXTRUSION_SCALE_FACTOR}"
         )
+
+    def next_step_callback(self, msg):
+        self.get_logger().info("Received next step signal. Executing next command.")
+        self.execute_next_command()
 
     def shutdown_callback(self, msg):
         self.get_logger().info("Received shutdown signal. Exiting...")

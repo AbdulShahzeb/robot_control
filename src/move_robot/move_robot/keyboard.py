@@ -13,12 +13,14 @@ class KeyboardNode(Node):
         self.shutdown_pub = self.create_publisher(Bool, "/kb/shutdown", 10)
         self.speed_multiplier_pub = self.create_publisher(Float32, "/kb/speed_multiplier", 10)
         self.extrusion_scale_pub = self.create_publisher(Float32, "/kb/extrusion_scale", 10)
+        self.next_step_pub = self.create_publisher(Bool, "/kb/next_step", 10)
 
         self.get_logger().info(
             "\n"
             "-----------------------------------\n"
             "Keyboard Node is running.\n"
             "Press 'l' then Enter to toggle detailed logging.\n"
+            "Press 'n' then Enter to send the next line of Gcode.\n"
             "Press 's <value>' then Enter to set print speed multiplier (e.g., 's 2.5').\n"
             "Press 'e <value>' then Enter to set extrusion scale factor (e.g., 'e 1.5').\n"
             "Press 'q' then Enter to quit.\n"
@@ -91,6 +93,16 @@ class KeyboardNode(Node):
                             self.get_logger().warn(f"Invalid extrusion value: '{match.group(1)}'")
                     else:
                         self.get_logger().warn("Invalid extrusion command format. Use 'e <value>' (e.g., 'e 0.8')")
+
+                elif user_input == "n":
+                    self.get_logger().info(
+                        "User pressed 'n'. Sending NEXT_STEP signal."
+                    )
+
+                    next_step_msg = Bool()
+                    next_step_msg.data = True
+                    self.next_step_pub.publish(next_step_msg)
+
                 else:
                     self.get_logger().warn(f"Unknown command: '{user_input}'")
 
