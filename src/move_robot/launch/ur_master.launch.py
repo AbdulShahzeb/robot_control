@@ -42,14 +42,14 @@ def generate_launch_description():
                 # Offsets
                 'x_offset': -875.0,
                 'y_offset': -270.0,
-                'z_offset': 193.5,
+                'z_offset': 193.75,
                 'wrist_angle': 90.0,
 
                 # Speed and extrusion
-                'print_speed_multiplier': 1.25,
-                'extrusion_scale_factor': 1.67,
-                'first_layer_speed_factor': 0.75,
-                'split_threshold': 40.0,
+                'print_speed_multiplier': 1.33,
+                'extrusion_scale_factor': 1.0,
+                'first_layer_speed_factor': 0.8,
+                'split_threshold': 45.0,
             },
             {'file': LaunchConfiguration('file')}
         ]

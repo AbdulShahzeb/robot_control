@@ -13,6 +13,7 @@ class KeyboardNode(Node):
         self.shutdown_pub = self.create_publisher(Bool, "/kb/shutdown", 10)
         self.speed_multiplier_pub = self.create_publisher(Float32, "/kb/speed_multiplier", 10)
         self.extrusion_scale_pub = self.create_publisher(Float32, "/kb/extrusion_scale", 10)
+        self.adjust_z_offset_pub = self.create_publisher(Float32, "/kb/adjust_z_offset", 10)
         self.next_step_pub = self.create_publisher(Bool, "/kb/next_step", 10)
 
         self.get_logger().info(
@@ -23,6 +24,7 @@ class KeyboardNode(Node):
             "Press 'n' then Enter to send the next line of Gcode.\n"
             "Press 's <value>' then Enter to set print speed multiplier (e.g., 's 2.5').\n"
             "Press 'e <value>' then Enter to set extrusion scale factor (e.g., 'e 1.5').\n"
+            "Press 'z <value>' then Enter to micro-adjust z_offset (e.g., 'z 0.05').\n"
             "Press 'q' then Enter to quit.\n"
             "-----------------------------------"
         )
@@ -93,6 +95,23 @@ class KeyboardNode(Node):
                             self.get_logger().warn(f"Invalid extrusion value: '{match.group(1)}'")
                     else:
                         self.get_logger().warn("Invalid extrusion command format. Use 'e <value>' (e.g., 'e 0.8')")
+
+                elif user_input.startswith("z "):
+                    match = re.match(r"z\s+(-?\d*\.?\d+)", user_input)
+                    if match:
+                        try:
+                            z_offset_value = float(match.group(1))
+                            self.get_logger().info(
+                                f"Adjusting z_offset by {z_offset_value} mm"
+                            )
+
+                            z_offset_msg = Float32()
+                            z_offset_msg.data = z_offset_value
+                            self.adjust_z_offset_pub.publish(z_offset_msg)
+                        except ValueError:
+                            self.get_logger().warn(f"Invalid z_offset value: '{match.group(1)}'")
+                    else:
+                        self.get_logger().warn("Invalid z_offset command format. Use 'z <value>' (e.g., 'z 0.1')")
 
                 elif user_input == "n":
                     self.get_logger().info(

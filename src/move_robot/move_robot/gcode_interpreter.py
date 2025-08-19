@@ -45,9 +45,11 @@ class GCodeInterpreter(Node):
         self.extrusion_scale_sub = self.create_subscription(
             Float32, "/kb/extrusion_scale", self.extrusion_scale_callback, 10
         )
-
         self.next_step_sub = self.create_subscription(
             Bool, "/kb/next_step", self.next_step_callback, 10
+        )
+        self.adjust_z_offset_sub = self.create_subscription(
+            Float32, "/kb/adjust_z_offset", self.adjust_z_offset_callback, 10
         )
 
         # Parameters
@@ -107,6 +109,10 @@ class GCodeInterpreter(Node):
         self.is_executing = False
         self.first_move_executed = False
         self.start_time = None
+        self.last_movement_time = None
+        self.watchdog_timeout = 0.4 # sec
+        self.watchdog_timer = self.create_timer(0.1, self.watchdog_check)
+        self.watchdog_error_count = 0
 
         # G-code command queue and execution state
         self.gcode_commands = []
@@ -166,6 +172,9 @@ class GCodeInterpreter(Node):
         """Callback for robot movement status updates"""
         curr_is_moving = msg.data
 
+        if curr_is_moving:
+            self.last_movement_time = self.get_clock().now()
+
         # Detect transition from moving to stopped
         if self.prev_is_moving and not curr_is_moving and self.is_executing:
             if self.toggle_log:
@@ -213,6 +222,8 @@ class GCodeInterpreter(Node):
         pose_msg.angular.y = 0.0
         pose_msg.angular.z = self.WRIST_ANGLE
         self.pose_pub_.publish(pose_msg)
+
+        self.get_logger().info(f"Watchdog exceeded {self.watchdog_error_count} times during execution.")
 
         sleep(0.25)
         self.shutdown_requested = True
@@ -459,6 +470,17 @@ class GCodeInterpreter(Node):
             )
             return False
 
+    def watchdog_check(self):
+        """Check if robot has stopped moving unexpectedly."""
+        if self.is_executing and self.last_movement_time is not None:
+            elapsed_time = (self.get_clock().now() - self.last_movement_time).nanoseconds / 1e9
+            if elapsed_time > self.watchdog_timeout:
+                self.get_logger().warn(
+                    f"Watchdog timeout exceeded! Executing next command."
+                )
+                self.watchdog_error_count += 1
+                self.execute_next_command()
+
     def toggle_log_callback(self, msg):
         self.toggle_log = not self.toggle_log
 
@@ -479,6 +501,20 @@ class GCodeInterpreter(Node):
     def next_step_callback(self, msg):
         self.get_logger().info("Received next step signal. Executing next command.")
         self.execute_next_command()
+
+    def adjust_z_offset_callback(self, msg):
+        """Adjust the Z offset of the robot arm relative to current."""
+        adjustment = msg.data
+        if abs(adjustment) > 1.0:
+            self.get_logger().warn(
+                f"Z offset adjustment {adjustment:.2f} mm is too large. Must be between -1.0 and 1.0 mm."
+            )
+            return
+        self.Z_OFFSET += adjustment
+
+        self.get_logger().info(
+            f"Adjusted z_offset by {adjustment:.2f} mm. New Z offset: {self.Z_OFFSET} mm"
+        )
 
     def shutdown_callback(self, msg):
         self.get_logger().info("Received shutdown signal. Exiting...")
