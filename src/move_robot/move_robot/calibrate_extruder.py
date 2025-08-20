@@ -5,11 +5,11 @@ import time
 import math
 
 # --- Constants ---
-SHAFT_DIAMETER = 5.0
+SHAFT_DIAMETER = 10.0
 MICROSTEPPING = 32.0
 STEPS_PER_REVOLUTION = 200.0 * MICROSTEPPING
 # This is the theoretical value we are calibrating against
-THEORETICAL_STEPS_PER_MM = STEPS_PER_REVOLUTION / (math.pi * SHAFT_DIAMETER)
+THEORETICAL_STEPS_PER_MM = 221.43 #STEPS_PER_REVOLUTION / (math.pi * SHAFT_DIAMETER)
 
 class ExtruderCalibrator(Node):
 
@@ -20,21 +20,15 @@ class ExtruderCalibrator(Node):
         self.publisher_ = self.create_publisher(Float32, 'stepper/speed', 10)
         
         # Get parameters from launch file
-        self.declare_parameter('num_runs', 3)
-        self.declare_parameter('auto_increment', False)
-        self.declare_parameter('base_distance', 50.0)
-        self.declare_parameter('base_speed', 250.0)
-        self.declare_parameter('speed_increment', 250.0)
-        
-        self.num_runs = self.get_parameter('num_runs').get_parameter_value().integer_value
-        self.auto_increment = self.get_parameter('auto_increment').get_parameter_value().bool_value
-        self.base_distance = self.get_parameter('base_distance').get_parameter_value().double_value
-        self.base_speed = self.get_parameter('base_speed').get_parameter_value().double_value
-        self.speed_increment = self.get_parameter('speed_increment').get_parameter_value().double_value
-        
+        self.num_runs = 5
+        self.auto_increment = True
+        self.base_distance = 30.0
+        self.base_speed = 1250.0
+        self.speed_increment = 250.0
+
         # Data storage for results
         self.results = []
-        
+
         self.get_logger().info('Extruder Calibrator node started.')
         self.get_logger().info(f"Configuration: {self.num_runs} runs, auto_increment={self.auto_increment}")
 

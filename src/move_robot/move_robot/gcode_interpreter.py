@@ -9,7 +9,7 @@ import math
 import os
 from time import sleep, time
 from enum import Enum, auto
-
+import numpy as np
 
 class PositioningState(Enum):
     ABSOLUTE = auto()
@@ -64,7 +64,7 @@ class GCodeInterpreter(Node):
         self.declare_parameter("split_threshold", 50.0)
 
         # Constants for stepper motor calculation
-        self.SHAFT_DIAMETER = 5.0
+        self.SHAFT_DIAMETER = 10.0
         self.MICROSTEPPING = 32.0
         self.STEPS_PER_REVOLUTION = 200.0 * self.MICROSTEPPING
         self.STEPS_PER_MM = self.STEPS_PER_REVOLUTION / (math.pi * self.SHAFT_DIAMETER)
@@ -85,7 +85,7 @@ class GCodeInterpreter(Node):
         self.FIRST_LAYER_SPEED_FACTOR = (
             self.get_parameter("first_layer_speed_factor").get_parameter_value().double_value
         )
-        self.ROBOT_MAX_SPEED = 100.0  # mm/s
+        self.ROBOT_MAX_SPEED = 150.0  # mm/s
         self.get_logger().info(
             f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}"
         )
@@ -357,7 +357,8 @@ class GCodeInterpreter(Node):
             if feedrate_mms > 0:
                 # Calculate a duration just for this extrusion action
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
-                stepper_speed = (delta_e / duration_for_extrusion) * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR
+                extrusion_speed_mmps = delta_e / duration_for_extrusion
+                stepper_speed = extrusion_speed_mmps * self.steps_per_mm(extrusion_speed_mmps) * self.EXTRUSION_SCALE_FACTOR
             else:
                 self.get_logger().error(
                     "Cannot perform extrusion-only move with zero feedrate."
@@ -422,13 +423,11 @@ class GCodeInterpreter(Node):
                         effective_speed_mms = self.ROBOT_MAX_SPEED
 
                 if effective_speed_mms > 0:
-                    duration_seconds = max(
-                        1.0, (xyz_move_distance / effective_speed_mms)
-                    )
+                    duration_seconds = xyz_move_distance / effective_speed_mms
 
             # Publish duration and pose for the robot arm
             duration_msg = Float32()
-            if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4:
+            if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4 and g_code == 1:
                 duration_msg.data = float(duration_seconds / (self.PRINT_SPEED_MULTIPLIER * self.FIRST_LAYER_SPEED_FACTOR))
             else:
                 duration_msg.data = float(duration_seconds / self.PRINT_SPEED_MULTIPLIER)
@@ -436,7 +435,11 @@ class GCodeInterpreter(Node):
 
             if self.toggle_log:
                 self.get_logger().info(
-                    f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s"
+                    f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s, Speed: {effective_speed_mms:.2f} mm/s"
+                )
+            else:
+                self.get_logger().info(
+                    f"Current speed: {effective_speed_mms:.2f} mm/s"
                 )
 
             pose_msg = Twist()
@@ -455,7 +458,7 @@ class GCodeInterpreter(Node):
                     extrusion_speed_mmps = self.FIRST_LAYER_SPEED_FACTOR * delta_e / duration_seconds
                 else:
                     extrusion_speed_mmps = delta_e / duration_seconds
-                stepper_speed = extrusion_speed_mmps * self.STEPS_PER_MM * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
+                stepper_speed = extrusion_speed_mmps * self.steps_per_mm(extrusion_speed_mmps) * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
 
             speed_msg = Float32()
             speed_msg.data = float(stepper_speed)
@@ -469,6 +472,17 @@ class GCodeInterpreter(Node):
                 "G1/G0 command with no change in position or extrusion. Skipping."
             )
             return False
+
+    def steps_per_mm(self, extrusion_speed_mmps):
+        """Return calibrated steps/mm based on extrusion speed."""
+        if extrusion_speed_mmps <= 0:
+            return 221.43
+
+        # Calibration data: (estimated_speed_mmps, actual_steps_per_mm)
+        speeds = np.array([1.1, 2.3, 3.4, 4.5, 5.6, 6.8, 7.9, 9.0, 10.2])
+        spms = np.array([201.30, 201.30, 212.91, 221.43, 249.52, 250.68, 288.82, 288.82, 301.95])
+
+        return float(np.interp(extrusion_speed_mmps, speeds, spms))
 
     def watchdog_check(self):
         """Check if robot has stopped moving unexpectedly."""
