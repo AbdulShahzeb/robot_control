@@ -21,10 +21,10 @@ class ExtruderCalibrator(Node):
         
         # Get parameters from launch file
         self.num_runs = 5
-        self.auto_increment = True
+        self.auto_increment = False
         self.base_distance = 30.0
-        self.base_speed = 1250.0
-        self.speed_increment = 250.0
+        self.base_speed = 25.0
+        self.speed_increment = 50.0
 
         # Data storage for results
         self.results = []

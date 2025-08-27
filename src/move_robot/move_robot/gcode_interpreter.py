@@ -85,7 +85,7 @@ class GCodeInterpreter(Node):
         self.FIRST_LAYER_SPEED_FACTOR = (
             self.get_parameter("first_layer_speed_factor").get_parameter_value().double_value
         )
-        self.ROBOT_MAX_SPEED = 150.0  # mm/s
+        self.ROBOT_MAX_SPEED = 100.0  # mm/s
         self.get_logger().info(
             f"Offsets: X={self.X_OFFSET}, Y={self.Y_OFFSET}, Z={self.Z_OFFSET}"
         )
@@ -340,6 +340,7 @@ class GCodeInterpreter(Node):
         delta_y = self.current_position["Y"] - prev_position["Y"]
         delta_z = self.current_position["Z"] - prev_position["Z"]
         delta_e = self.current_extrusion - prev_extrusion
+        effective_speed_mms = 0.0
 
         xyz_move_distance = math.sqrt(delta_x**2 + delta_y**2 + delta_z**2)
 
@@ -410,7 +411,6 @@ class GCodeInterpreter(Node):
                 self.command_index -= 1
                 return False
             else:
-                effective_speed_mms = 0.0
                 if g_code == 0:
                     effective_speed_mms = self.ROBOT_MAX_SPEED
                 elif g_code == 1:
@@ -435,11 +435,11 @@ class GCodeInterpreter(Node):
 
             if self.toggle_log:
                 self.get_logger().info(
-                    f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s, Speed: {effective_speed_mms:.2f} mm/s"
+                    f"Move Distance: {xyz_move_distance:.2f} mm, Duration: {duration_seconds:.2f} s"
                 )
-            else:
+            if effective_speed_mms:
                 self.get_logger().info(
-                    f"Current speed: {effective_speed_mms:.2f} mm/s"
+                    f"Current speed: {(effective_speed_mms * self.PRINT_SPEED_MULTIPLIER * self.EXTRUSION_SCALE_FACTOR):.2f} mm/s"
                 )
 
             pose_msg = Twist()
@@ -479,8 +479,8 @@ class GCodeInterpreter(Node):
             return 221.43
 
         # Calibration data: (estimated_speed_mmps, actual_steps_per_mm)
-        speeds = np.array([1.1, 2.3, 3.4, 4.5, 5.6, 6.8, 7.9, 9.0, 10.2])
-        spms = np.array([201.30, 201.30, 212.91, 221.43, 249.52, 250.68, 288.82, 288.82, 301.95])
+        speeds = np.array([0.91, 1.129, 2.258, 3.387, 4.516, 5.645, 6.774, 7.9, 9.032, 10.161])
+        spms = np.array([196.83, 201.30, 201.30, 212.91, 221.43, 249.52, 250.68, 288.82, 288.82, 301.95])
 
         return float(np.interp(extrusion_speed_mmps, speeds, spms))
 
