@@ -40,9 +40,10 @@ def generate_launch_description():
         parameters=[
             {
                 # Offsets
-                'x_offset': -875.0,
-                'y_offset': -270.0,
-                'z_offset': 193.3,
+                'origin_at_center': True,
+                'x_offset': -878.0,
+                'y_offset': -262.0,
+                'z_offset': 193.42,
                 'wrist_angle': 90.0,
 
                 # Speed and extrusion

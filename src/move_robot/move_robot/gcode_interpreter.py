@@ -62,6 +62,7 @@ class GCodeInterpreter(Node):
         self.declare_parameter("extrusion_scale_factor", 1.0)
         self.declare_parameter("first_layer_speed_factor", 0.4)
         self.declare_parameter("split_threshold", 50.0)
+        self.declare_parameter("origin_at_center", False)
 
         # Constants for stepper motor calculation
         self.SHAFT_DIAMETER = 10.0
@@ -99,6 +100,11 @@ class GCodeInterpreter(Node):
         self.SPLIT_THRESHOLD = (
             self.get_parameter("split_threshold").get_parameter_value().double_value
         )
+        origin_at_center = self.get_parameter("origin_at_center").get_parameter_value().bool_value
+
+        if origin_at_center:
+            self.X_OFFSET += 235.0/2
+            self.Y_OFFSET += 235.0/2
 
         # State variables
         self.positioning_state = PositioningState.ABSOLUTE
