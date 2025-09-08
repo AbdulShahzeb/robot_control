@@ -11,6 +11,7 @@ from time import sleep, time
 from enum import Enum, auto
 import numpy as np
 
+
 class PositioningState(Enum):
     ABSOLUTE = auto()
     RELATIVE = auto()
@@ -35,6 +36,9 @@ class GCodeInterpreter(Node):
             Bool, "/kb/toggle_log", self.toggle_log_callback, 10
         )
         self.toggle_log = True
+        self.pause_sub = self.create_subscription(
+            Bool, "/kb/pause", self.pause_callback, 10
+        )
         self.shutdown_sub = self.create_subscription(
             Bool, "/kb/shutdown", self.shutdown_callback, 10
         )
@@ -84,7 +88,9 @@ class GCodeInterpreter(Node):
             self.get_parameter("wrist_angle").get_parameter_value().double_value
         )
         self.FIRST_LAYER_SPEED_FACTOR = (
-            self.get_parameter("first_layer_speed_factor").get_parameter_value().double_value
+            self.get_parameter("first_layer_speed_factor")
+            .get_parameter_value()
+            .double_value
         )
         self.ROBOT_MAX_SPEED = 100.0  # mm/s
         self.get_logger().info(
@@ -92,19 +98,25 @@ class GCodeInterpreter(Node):
         )
         self.get_logger().info(f"Wrist angle: {self.WRIST_ANGLE}")
         self.EXTRUSION_SCALE_FACTOR = (
-            self.get_parameter("extrusion_scale_factor").get_parameter_value().double_value
+            self.get_parameter("extrusion_scale_factor")
+            .get_parameter_value()
+            .double_value
         )
         self.PRINT_SPEED_MULTIPLIER = (
-            self.get_parameter("print_speed_multiplier").get_parameter_value().double_value
+            self.get_parameter("print_speed_multiplier")
+            .get_parameter_value()
+            .double_value
         )
         self.SPLIT_THRESHOLD = (
             self.get_parameter("split_threshold").get_parameter_value().double_value
         )
-        origin_at_center = self.get_parameter("origin_at_center").get_parameter_value().bool_value
+        origin_at_center = (
+            self.get_parameter("origin_at_center").get_parameter_value().bool_value
+        )
 
         if origin_at_center:
-            self.X_OFFSET += 235.0/2
-            self.Y_OFFSET += 235.0/2
+            self.X_OFFSET += 235.0 / 2
+            self.Y_OFFSET += 235.0 / 2
 
         # State variables
         self.positioning_state = PositioningState.ABSOLUTE
@@ -116,7 +128,7 @@ class GCodeInterpreter(Node):
         self.first_move_executed = False
         self.start_time = None
         self.last_movement_time = None
-        self.watchdog_timeout = 0.4 # sec
+        self.watchdog_timeout = 0.4  # sec
         self.watchdog_timer = self.create_timer(0.1, self.watchdog_check)
         self.watchdog_error_count = 0
 
@@ -140,6 +152,20 @@ class GCodeInterpreter(Node):
         try:
             with open(gcode_file, "r") as f:
                 for line_num, line in enumerate(f, 1):
+                    if line.strip().startswith("; CHECKPOINT_EXTRUSION:"):
+                        try:
+                            self.current_extrusion = float(
+                                line.strip().split(":")[1].strip()
+                            )
+                            self.get_logger().info(
+                                f"Restored extrusion to E={self.current_extrusion}"
+                            )
+                        except ValueError:
+                            self.get_logger().warn(
+                                f"Invalid CHECKPOINT_EXTRUSION value on line {line_num}"
+                            )
+                        continue
+
                     parsed = self.parse_gcode_line(line)
                     if parsed:
                         parsed["line_number"] = line_num
@@ -169,7 +195,7 @@ class GCodeInterpreter(Node):
                     value = float(part[1:])
                     command[letter] = value
                 except (ValueError, IndexError):
-                    # Handle cases with no value, like G90
+                    # Handle cases with no value
                     command[letter] = None
 
         return command if command else None
@@ -229,7 +255,9 @@ class GCodeInterpreter(Node):
         pose_msg.angular.z = self.WRIST_ANGLE
         self.pose_pub_.publish(pose_msg)
 
-        self.get_logger().info(f"Watchdog exceeded {self.watchdog_error_count} times during execution.")
+        self.get_logger().info(
+            f"Watchdog exceeded {self.watchdog_error_count} times during execution."
+        )
 
         sleep(0.25)
         self.shutdown_requested = True
@@ -365,7 +393,11 @@ class GCodeInterpreter(Node):
                 # Calculate a duration just for this extrusion action
                 duration_for_extrusion = abs(delta_e) / feedrate_mms
                 extrusion_speed_mmps = delta_e / duration_for_extrusion
-                stepper_speed = extrusion_speed_mmps * self.steps_per_mm(extrusion_speed_mmps) * self.EXTRUSION_SCALE_FACTOR
+                stepper_speed = (
+                    extrusion_speed_mmps
+                    * self.steps_per_mm(extrusion_speed_mmps)
+                    * self.EXTRUSION_SCALE_FACTOR
+                )
             else:
                 self.get_logger().error(
                     "Cannot perform extrusion-only move with zero feedrate."
@@ -376,7 +408,9 @@ class GCodeInterpreter(Node):
             speed_msg.data = float(stepper_speed)
             self.stepper_pub_.publish(speed_msg)
 
-            self.get_clock().sleep_for(rclpy.duration.Duration(nanoseconds=int(duration_for_extrusion * 1e9)))
+            self.get_clock().sleep_for(
+                rclpy.duration.Duration(nanoseconds=int(duration_for_extrusion * 1e9))
+            )
 
             return False
 
@@ -390,7 +424,11 @@ class GCodeInterpreter(Node):
                     f"Executing first movement, Duration={duration_seconds:.2f} s."
                 )
                 self.first_move_executed = True
-            elif xyz_move_distance > self.SPLIT_THRESHOLD and self.positioning_state == PositioningState.ABSOLUTE and g_code == 1:
+            elif (
+                xyz_move_distance > self.SPLIT_THRESHOLD
+                and self.positioning_state == PositioningState.ABSOLUTE
+                and g_code == 1
+            ):
                 # Subdivide large moves into smaller segments
                 mid_command = {
                     "G": g_code,
@@ -398,7 +436,7 @@ class GCodeInterpreter(Node):
                     "Y": prev_position["Y"] + delta_y / 2.0,
                     "Z": prev_position["Z"] + delta_z / 2.0,
                     "E": prev_extrusion + delta_e / 2.0,
-                    "F": self.current_feedrate
+                    "F": self.current_feedrate,
                 }
                 final_command = {
                     "G": g_code,
@@ -406,7 +444,7 @@ class GCodeInterpreter(Node):
                     "Y": self.current_position["Y"],
                     "Z": self.current_position["Z"],
                     "E": self.current_extrusion,
-                    "F": self.current_feedrate
+                    "F": self.current_feedrate,
                 }
 
                 self.gcode_commands[self.command_index] = mid_command
@@ -433,10 +471,19 @@ class GCodeInterpreter(Node):
 
             # Publish duration and pose for the robot arm
             duration_msg = Float32()
-            if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4 and g_code == 1:
-                duration_msg.data = float(duration_seconds / (self.PRINT_SPEED_MULTIPLIER * self.FIRST_LAYER_SPEED_FACTOR))
+            if (
+                self.positioning_state == PositioningState.ABSOLUTE
+                and self.current_position["Z"] < 0.4
+                and g_code == 1
+            ):
+                duration_msg.data = float(
+                    duration_seconds
+                    / (self.PRINT_SPEED_MULTIPLIER * self.FIRST_LAYER_SPEED_FACTOR)
+                )
             else:
-                duration_msg.data = float(duration_seconds / self.PRINT_SPEED_MULTIPLIER)
+                duration_msg.data = float(
+                    duration_seconds / self.PRINT_SPEED_MULTIPLIER
+                )
             self.duration_pub_.publish(duration_msg)
 
             if self.toggle_log:
@@ -460,11 +507,21 @@ class GCodeInterpreter(Node):
             # Calculate and publish stepper speed for the combined move
             stepper_speed = 0.0
             if duration_seconds > 0 and delta_e > 0:
-                if self.positioning_state == PositioningState.ABSOLUTE and self.current_position["Z"] < 0.4:
-                    extrusion_speed_mmps = self.FIRST_LAYER_SPEED_FACTOR * delta_e / duration_seconds
+                if (
+                    self.positioning_state == PositioningState.ABSOLUTE
+                    and self.current_position["Z"] < 0.4
+                ):
+                    extrusion_speed_mmps = (
+                        self.FIRST_LAYER_SPEED_FACTOR * delta_e / duration_seconds
+                    )
                 else:
                     extrusion_speed_mmps = delta_e / duration_seconds
-                stepper_speed = extrusion_speed_mmps * self.steps_per_mm(extrusion_speed_mmps) * self.EXTRUSION_SCALE_FACTOR * self.PRINT_SPEED_MULTIPLIER
+                stepper_speed = (
+                    extrusion_speed_mmps
+                    * self.steps_per_mm(extrusion_speed_mmps)
+                    * self.EXTRUSION_SCALE_FACTOR
+                    * self.PRINT_SPEED_MULTIPLIER
+                )
 
             speed_msg = Float32()
             speed_msg.data = float(stepper_speed)
@@ -485,15 +542,32 @@ class GCodeInterpreter(Node):
             return 221.43
 
         # Calibration data: (estimated_speed_mmps, actual_steps_per_mm)
-        speeds = np.array([0.91, 1.129, 2.258, 3.387, 4.516, 5.645, 6.774, 7.9, 9.032, 10.161])
-        spms = np.array([196.83, 201.30, 201.30, 212.91, 221.43, 249.52, 250.68, 288.82, 288.82, 301.95])
+        speeds = np.array(
+            [0.91, 1.129, 2.258, 3.387, 4.516, 5.645, 6.774, 7.9, 9.032, 10.161]
+        )
+        spms = np.array(
+            [
+                196.83,
+                201.30,
+                201.30,
+                212.91,
+                221.43,
+                249.52,
+                250.68,
+                288.82,
+                288.82,
+                301.95,
+            ]
+        )
 
         return float(np.interp(extrusion_speed_mmps, speeds, spms))
 
     def watchdog_check(self):
         """Check if robot has stopped moving unexpectedly."""
         if self.is_executing and self.last_movement_time is not None:
-            elapsed_time = (self.get_clock().now() - self.last_movement_time).nanoseconds / 1e9
+            elapsed_time = (
+                self.get_clock().now() - self.last_movement_time
+            ).nanoseconds / 1e9
             if elapsed_time > self.watchdog_timeout:
                 self.get_logger().warn(
                     f"Watchdog timeout exceeded! Executing next command."
@@ -535,6 +609,79 @@ class GCodeInterpreter(Node):
         self.get_logger().info(
             f"Adjusted z_offset by {adjustment:.2f} mm. New Z offset: {self.Z_OFFSET} mm"
         )
+
+    def pause_callback(self, msg):
+        if not msg.data or not self.is_executing:
+            return
+
+        if self.positioning_state == PositioningState.RELATIVE:
+            self.get_logger().warn("Cannot pause during relative positioning mode.")
+            return
+
+        self.get_logger().info("Pause requested. Creating checkpoint.")
+        self.is_executing = False
+
+        # Stop stepper motor
+        speed_msg = Float32()
+        speed_msg.data = 0.0
+        self.stepper_pub_.publish(speed_msg)
+
+        # Create checkpoint
+        checkpoint_path = os.path.expanduser("~/checkpoint.gcode")
+        try:
+            with open(checkpoint_path, "w") as f:
+                f.write(f"; Checkpoint created from command {self.command_index + 1}\n")
+                f.write(
+                    f"; Current position: X{self.current_position['X']:.3f} Y{self.current_position['Y']:.3f} Z{self.current_position['Z']:.3f}\n"
+                )
+                f.write(f"; CHECKPOINT_EXTRUSION: {self.current_extrusion:.5f}\n")
+                f.write(f"; Current feedrate: F{self.current_feedrate:.0f}\n")
+
+                # Set current state
+                f.write("G90 ; Absolute positioning\n")
+                f.write(f"F{self.current_feedrate:.0f}\n")
+                f.write(f"G92 E{self.current_extrusion:.5f}\n")
+                f.write(
+                    f"G0 X{self.current_position['X']:.3f} Y{self.current_position['Y']:.3f} Z{self.current_position['Z']:.3f}\n"
+                )
+
+                # Write remaining commands
+                for i in range(self.command_index, len(self.gcode_commands)):
+                    command = self.gcode_commands[i]
+                    gcode_line = self.cmd_to_gcode_string(command)
+                    if gcode_line:
+                        f.write(f"{gcode_line}\n")
+
+            self.get_logger().info(f"Checkpoint saved to {checkpoint_path}")
+            self.get_logger().info(
+                f"Remaining commands: {len(self.gcode_commands) - self.command_index}"
+            )
+
+        except Exception as e:
+            self.get_logger().error(f"Failed to create checkpoint: {str(e)}")
+
+        self.stop_execution()
+
+    def cmd_to_gcode_string(self, command):
+        """Convert a parsed command back to G-code string"""
+        if not command:
+            return ""
+
+        parts = []
+
+        if "G" in command and command["G"] is not None:
+            parts.append(f"G{int(command['G'])}")
+
+        for param in ["X", "Y", "Z", "E", "F"]:
+            if param in command and command[param] is not None:
+                if param == "F":
+                    parts.append(f"{param}{command[param]:.0f}")
+                elif param == "E":
+                    parts.append(f"{param}{command[param]:.5f}")
+                else:
+                    parts.append(f"{param}{command[param]:.3f}")
+
+        return " ".join(parts) if parts else ""
 
     def shutdown_callback(self, msg):
         self.get_logger().info("Received shutdown signal. Exiting...")

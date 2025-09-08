@@ -10,6 +10,7 @@ class KeyboardNode(Node):
         super().__init__("keyboard_node")
 
         self.toggle_log_pub = self.create_publisher(Bool, "/kb/toggle_log", 10)
+        self.pause_pub = self.create_publisher(Bool, "/kb/pause", 10)
         self.shutdown_pub = self.create_publisher(Bool, "/kb/shutdown", 10)
         self.speed_multiplier_pub = self.create_publisher(Float32, "/kb/speed_multiplier", 10)
         self.extrusion_scale_pub = self.create_publisher(Float32, "/kb/extrusion_scale", 10)
@@ -25,6 +26,7 @@ class KeyboardNode(Node):
             "Press 's <value>' then Enter to set print speed multiplier (e.g., 's 2.5').\n"
             "Press 'e <value>' then Enter to set extrusion scale factor (e.g., 'e 1.5').\n"
             "Press 'z <value>' then Enter to micro-adjust z_offset (e.g., 'z 0.05').\n"
+            "Press 'p!' then Enter to pause.\n"
             "Press 'q' then Enter to quit.\n"
             "-----------------------------------"
         )
@@ -43,6 +45,18 @@ class KeyboardNode(Node):
                     log_msg = Bool()
                     log_msg.data = True
                     self.toggle_log_pub.publish(log_msg)
+
+                elif user_input == "p!":
+                    self.get_logger().info(
+                        "User pressed 'p!'. Creating checkpoint and shutting down."
+                    )
+
+                    pause_msg = Bool()
+                    pause_msg.data = True
+                    self.pause_pub.publish(pause_msg)
+
+                    sleep(0.5)
+                    break
 
                 elif user_input == "q":
                     self.get_logger().info(
