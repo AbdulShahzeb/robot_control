@@ -132,6 +132,12 @@ class GCodeInterpreter(Node):
         self.watchdog_timer = self.create_timer(0.1, self.watchdog_check)
         self.watchdog_error_count = 0
 
+        # Time esimation
+        self.total_filament = -1.0
+        self.remaining_filament = -1.0
+        self.extrusion_history = []
+        self.history_window = 30 # seconds
+
         # G-code command queue and execution state
         self.gcode_commands = []
         self.command_index = 0
@@ -163,6 +169,18 @@ class GCodeInterpreter(Node):
                         except ValueError:
                             self.get_logger().warn(
                                 f"Invalid CHECKPOINT_EXTRUSION value on line {line_num}"
+                            )
+                        continue
+                    elif line.strip().startswith(";Filament used: "):
+                        try:
+                            value = line.strip().split(":")[1].strip()
+                            if value.endswith("m"):
+                                value = value[:-1]
+                            self.total_filament = float(value) * 1000.0
+                            self.remaining_filament = self.total_filament
+                        except ValueError:
+                            self.get_logger().warn(
+                                f"Invalid filament usage value on line {line_num}"
                             )
                         continue
 
@@ -636,6 +654,7 @@ class GCodeInterpreter(Node):
                 )
                 f.write(f"; CHECKPOINT_EXTRUSION: {self.current_extrusion:.5f}\n")
                 f.write(f"; Current feedrate: F{self.current_feedrate:.0f}\n")
+                f.write(f";Filament used: {self.total_filament:.4f}m\n")
 
                 # Set current state
                 f.write("G90 ; Absolute positioning\n")
