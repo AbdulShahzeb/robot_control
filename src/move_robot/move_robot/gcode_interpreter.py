@@ -158,20 +158,7 @@ class GCodeInterpreter(Node):
         try:
             with open(gcode_file, "r") as f:
                 for line_num, line in enumerate(f, 1):
-                    if line.strip().startswith("; CHECKPOINT_EXTRUSION:"):
-                        try:
-                            self.current_extrusion = float(
-                                line.strip().split(":")[1].strip()
-                            )
-                            self.get_logger().info(
-                                f"Restored extrusion to E={self.current_extrusion}"
-                            )
-                        except ValueError:
-                            self.get_logger().warn(
-                                f"Invalid CHECKPOINT_EXTRUSION value on line {line_num}"
-                            )
-                        continue
-                    elif line.strip().startswith(";Filament used: "):
+                    if line.strip().startswith(";Filament used: "):
                         try:
                             value = line.strip().split(":")[1].strip()
                             if value.endswith("m"):
@@ -280,6 +267,68 @@ class GCodeInterpreter(Node):
         sleep(0.25)
         self.shutdown_requested = True
 
+    def update_extrusion_history(self, extrusion_speed_mmps):
+        """Update extrusion history"""
+        current_time = time()
+        self.extrusion_history.append((current_time, extrusion_speed_mmps))
+
+        # Remove old entries
+        cutoff_time = current_time - self.history_window
+        self.extrusion_history = [
+            (t, speed) for t, speed in self.extrusion_history if t >= cutoff_time
+        ]
+
+    def get_avg_extrusion_speed(self):
+        """Calculate average extrusion speed over history window"""
+        if not self.extrusion_history:
+            return 0.0
+
+        # Weight recent speeds more heavily
+        current_time = time()
+        total_weight = 0.0
+        weighted_sum = 0.0
+        for t, speed in self.extrusion_history:
+            age = current_time - t
+            weight = max(0.1, 1.0 - (age / self.history_window))
+            weighted_sum += speed * weight
+            total_weight += weight
+
+        return weighted_sum / total_weight if total_weight > 0 else 0.0
+
+    def calculate_time_estimates(self):
+        """Estimate remaining time based on extrusion history"""
+        if self.total_filament <= 0 or self.remaining_filament < 0:
+            return None, None, 0.0
+
+        # Calculate progress
+        filament_used = self.total_filament - self.remaining_filament
+        if self.total_filament > 0:
+            percentage = filament_used / self.total_filament
+        else:
+            percentage = 0.0
+
+        # Calculate remaining time
+        avg_speed = self.get_avg_extrusion_speed()
+        if avg_speed > 0 and self.remaining_filament > 0:
+            estimated_remaining_time = self.remaining_filament / avg_speed
+        else:
+            # Fallback: use elapsed time and progress
+            if self.start_time and percentage > 0:
+                elapsed_time = time() - self.start_time
+                estimated_total_time = elapsed_time / percentage
+                estimated_remaining_time = estimated_total_time - elapsed_time
+            else:
+                estimated_remaining_time = 0.0
+
+        # Calculate total time
+        if self.start_time:
+            elapsed_time = time() - self.start_time
+            estimated_total_time = elapsed_time + estimated_remaining_time
+        else:
+            estimated_total_time = estimated_remaining_time
+
+        return estimated_remaining_time, estimated_total_time, percentage
+
     def execute_next_command(self):
         """Execute the next G-code command in the queue"""
         if not self.is_executing or self.command_index >= len(self.gcode_commands):
@@ -290,16 +339,8 @@ class GCodeInterpreter(Node):
             return
 
         command = self.gcode_commands[self.command_index]
-        percentage = (
-            (self.command_index + 1) / len(self.gcode_commands)
-            if len(self.gcode_commands) > 0
-            else 0
-        )
-
-        elapsed_time = time() - self.start_time
-        if percentage > 0:
-            estimated_total_time = elapsed_time / percentage
-            estimated_remaining_time = estimated_total_time - elapsed_time
+        estimated_remaining_time, estimated_total_time, percentage = self.calculate_time_estimates()
+        if estimated_remaining_time is not None and estimated_total_time is not None:
             remaining_minutes = int(estimated_remaining_time // 60)
             remaining_seconds = int(estimated_remaining_time % 60)
             total_minutes = int(estimated_total_time // 60)
@@ -652,7 +693,7 @@ class GCodeInterpreter(Node):
                 f.write(
                     f"; Current position: X{self.current_position['X']:.3f} Y{self.current_position['Y']:.3f} Z{self.current_position['Z']:.3f}\n"
                 )
-                f.write(f"; CHECKPOINT_EXTRUSION: {self.current_extrusion:.5f}\n")
+                f.write(f"; Current extrusion: {self.current_extrusion:.5f}\n")
                 f.write(f"; Current feedrate: F{self.current_feedrate:.0f}\n")
                 f.write(f";Filament used: {self.total_filament:.4f}m\n")
 
