@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import Twist
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -12,6 +13,20 @@ import sys
 
 MAX_UINT32 = 2**32 - 1  # 4,294,967,295
 MAX_DURATION_SEC = MAX_UINT32 / 1e9
+
+# Reliable topics
+reliable_qos = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1
+)
+
+# Best-effort topics
+besteffort_qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=5
+)
 
 class URcontrol(Node):
     """
@@ -43,13 +58,13 @@ class URcontrol(Node):
 
         # Set up subscribers
         self.duration_sub = self.create_subscription(
-            Float32, f"/ur10e/movement_duration", self.get_duration, 10
+            Float32, f"/ur10e/movement_duration", self.get_duration, reliable_qos
         )
         self.joint_states_sub = self.create_subscription(
-            JointState, "/joint_states", self.get_current_joint_states, 10
+            JointState, "/joint_states", self.get_current_joint_states, besteffort_qos
         )
         self.xyz_pose_sub = self.create_subscription(
-            Twist, f"/ur10e/point_pose", self.get_XYZ_pos, 10
+            Twist, f"/ur10e/point_pose", self.get_XYZ_pos, reliable_qos
         )
         self.joint_pose_sub = self.create_subscription(
             Float32MultiArray, f"/ur10e/target_joint_pose", self.get_joint_pos, 10

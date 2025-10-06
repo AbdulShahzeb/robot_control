@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 import rclpy.duration
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
@@ -16,21 +17,34 @@ class PositioningState(Enum):
     ABSOLUTE = auto()
     RELATIVE = auto()
 
+# Reliable topics
+reliable_qos = QoSProfile(
+    reliability=ReliabilityPolicy.RELIABLE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=1
+)
+
+# Best-effort topics
+besteffort_qos = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=5
+)
 
 class GCodeInterpreter(Node):
     def __init__(self):
         super().__init__("gcode_interpreter")
 
         # Publishers
-        self.pose_pub_ = self.create_publisher(Twist, "ur10e/point_pose", 10)
+        self.pose_pub_ = self.create_publisher(Twist, "ur10e/point_pose", reliable_qos)
         self.duration_pub_ = self.create_publisher(
-            Float32, f"/ur10e/movement_duration", 10
+            Float32, f"/ur10e/movement_duration", reliable_qos
         )
-        self.stepper_pub_ = self.create_publisher(Float32, "/stepper/speed", 10)
+        self.stepper_pub_ = self.create_publisher(Float32, "/stepper/speed", reliable_qos)
 
         # Subscribers
         self.movement_sub = self.create_subscription(
-            Bool, "ur10e/is_moving", self.robot_moving_callback, 10
+            Bool, "ur10e/is_moving", self.robot_moving_callback, besteffort_qos
         )
         self.toggle_log_sub = self.create_subscription(
             Bool, "/kb/toggle_log", self.toggle_log_callback, 10
