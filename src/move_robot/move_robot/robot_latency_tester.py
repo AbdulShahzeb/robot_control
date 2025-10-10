@@ -8,8 +8,7 @@ import time
 import numpy as np
 import math
 
-MAX_UINT32 = 2**32 - 1
-MAX_DURATION_SEC = MAX_UINT32 / 1e9
+JOINT_STATE_PUB_LATENCY = 2.0 # ms
 
 class RobotLatencyTester(Node):
     def __init__(self):
@@ -25,7 +24,6 @@ class RobotLatencyTester(Node):
         )
 
         self.movement_latencies = []
-        self.movement_ros2_delays = []
         self.waiting_for_movement = False
 
         self.step_count = 0
@@ -89,11 +87,7 @@ class RobotLatencyTester(Node):
 
         point = JointTrajectoryPoint()
         point.positions = positions
-
-        if duration_sec <= MAX_DURATION_SEC:
-            point.time_from_start.nanosec = int(duration_sec * 1e9)
-        else:
-            point.time_from_start.sec = int(duration_sec)
+        point.time_from_start.nanosec = int(duration_sec * 1e9)
 
         traj_msg.points = [point]
         self.traj_pub.publish(traj_msg)
@@ -101,15 +95,15 @@ class RobotLatencyTester(Node):
     def joint_state_callback(self, msg):
         if self.waiting_for_movement and self.test_active and msg.velocity:
             velocity = abs(math.degrees(msg.velocity[5]))
-            if velocity >= 0.00005:
+            if velocity >= 0.00001:
                 movement_time = time.perf_counter()
                 movement_latency = (movement_time - self.start_time) * 1000
-                self.movement_latencies.append(movement_latency)
-
                 current_ros_time = self.get_clock().now()
                 msg_ros_time = rclpy.time.Time.from_msg(msg.header.stamp)
                 ros2_delay = (current_ros_time - msg_ros_time).nanoseconds / 1_000_000.0
-                self.movement_ros2_delays.append(ros2_delay)
+                compensated_latency = movement_latency - ros2_delay - JOINT_STATE_PUB_LATENCY
+                if compensated_latency > 0:
+                    self.movement_latencies.append(compensated_latency)
 
                 self.waiting_for_movement = False
 
@@ -129,37 +123,12 @@ class RobotLatencyTester(Node):
                 print(f"\nError writing to file: {e}")
 
             move_array = np.array(self.movement_latencies)
-            print(f"ACTUAL MOVEMENT LATENCY (Joint States Method):")
+            print(f"MOVEMENT LATENCY (Joint States Method):")
             print(f"  Average: {np.mean(move_array):.4f} ms")
             print(f"  Min:     {np.min(move_array):.4f} ms")
             print(f"  Max:     {np.max(move_array):.4f} ms")
             print(f"  Std Dev: {np.std(move_array):.4f} ms")
-            print(f"  Count:   {len(self.movement_latencies)}/{self.step_count}")
-
-            if self.movement_ros2_delays:
-                comm_array = np.array(self.movement_ros2_delays)
-                print(f"\n  ROS2 Subscriber Delay (Joint States):")
-                print(f"    Average: {np.mean(comm_array):.4f} ms")
-                print(f"    Min:     {np.min(comm_array):.4f} ms")
-                print(f"    Max:     {np.max(comm_array):.4f} ms")
-                print(f"    Std Dev: {np.std(comm_array):.4f} ms")
-
-                # Compensated movement latency
-                avg_movement = np.mean(move_array)
-                avg_joint_delay = np.mean(comm_array)
-                joint_publisher_latency = 2.0 / 2.0  # 500Hz, half period
-                compensated_movement = (
-                    avg_movement - avg_joint_delay - joint_publisher_latency
-                )
-
-                print(f"\n  Joint States Frequency: 500 Hz (fixed)")
-                print(
-                    f"  Publisher Latency Compensation: {joint_publisher_latency:.1f} ms"
-                )
-                print(f"  Compensated Movement Latency:")
-                print(
-                    f"    {avg_movement:.4f} - {avg_joint_delay:.4f} - {joint_publisher_latency:.1f} = {compensated_movement:.4f} ms"
-                )
+            print(f"  Valid:   {len(self.movement_latencies)}/{self.step_count}")
 
         print(f"{'='*70}")
 
