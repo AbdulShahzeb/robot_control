@@ -2,10 +2,16 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 # Read the latency data
 data = []
-with open('base.txt', 'r') as f:
+default_file = 'base.txt'
+if len(sys.argv) > 1:
+    filename = sys.argv[1]
+else:
+    filename = default_file
+with open(filename, 'r') as f:
     for line in f:
         data.append(float(line.strip()))
 
