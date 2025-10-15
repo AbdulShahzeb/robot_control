@@ -20,7 +20,7 @@ void speed_callback(const void *msgin) {
 }
 
 void setup() {
-  SerialUSB.begin(115200);
+  SerialUSB.begin(500000);
   set_microros_transports();
 
   allocator = rcl_get_default_allocator();
@@ -35,5 +35,5 @@ void setup() {
 }
 
 void loop() {
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1));
+  rclc_executor_spin_some(&executor, RCL_US_TO_NS(10));
 }
