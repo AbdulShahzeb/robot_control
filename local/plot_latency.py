@@ -54,6 +54,7 @@ print(f"  Median:       {np.median(filtered_data):.4f} ms")
 print(f"  Min:          {np.min(filtered_data):.4f} ms")
 print(f"  Max:          {np.max(filtered_data):.4f} ms")
 print(f"  Std Dev:      {np.std(filtered_data):.4f} ms")
+print(f"  IQR:          {np.percentile(filtered_data, 75) - np.percentile(filtered_data, 25):.4f} ms")
 
 plt.tight_layout()
 plt.show()
